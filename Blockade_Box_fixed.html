@@ -207,6 +207,7 @@ body.nolb .lg{grid-template-columns:1fr}
   <p id="nm"></p>
   <input id="ni" class="inp hidden" maxlength="4" placeholder="CODE" autocomplete="off">
   <button id="nj" class="btn yel hidden" data-do="online:go">Join Room</button>
+  <button id="ncp" class="btn grn hidden" data-do="online:copy">🔗 Copy Invite Link</button>
   <button class="btn" data-do="online:cancel">Cancel</button>
 </div></div>
 
@@ -215,7 +216,7 @@ body.nolb .lg{grid-template-columns:1fr}
   <h2 id="mt"></h2>
   <p id="ms"></p>
   <button id="pa" class="btn grn" data-do="ad:post">▶ Watch Ad · +15 💎</button>
-  <button class="btn pri" data-do="again">↻ Play Again</button>
+  <button id="ag" class="btn pri" data-do="again">↻ Play Again</button>
   <button class="btn" data-do="lobby">🏠 Go to Lobby</button>
 </div></div>
 
@@ -256,6 +257,86 @@ const CG=(()=>{
     happy(){if(ok)call(s=>s.game.happytime());}
   };
 })();
+
+/* ---------- CrazyGames multiplayer requirements (invite link, invite button, instant multiplayer, usernames, SDK audio mute) ----------
+   Everything here is try/catch-guarded and does nothing when the SDK is missing/disabled, so the normal game is untouched. */
+let cgMute=false,roomCode='',cgInRoom=false,cgName='',oppName='',rmMe=false,rmOpp=false;
+const CGM={
+  g(){try{return CG.ok&&CG.sdk&&CG.sdk.game;}catch(e){return null;}},
+  /* Audio: when CrazyGames says muteAudio, all sound stays off no matter what the in-game 🔊 button says. */
+  initAudio(){
+    const g=this.g();if(!g)return;
+    const ap=st=>{cgMute=!!(st&&st.muteAudio);document.querySelectorAll('.snb').forEach(x=>x.textContent=(mute||cgMute)?'🔇':'🔊');};
+    try{ap(g.settings);g.addSettingsChangeListener(ap);}catch(e){}
+  },
+  /* CrazyGames username (shown in-game so friends recognise each other). */
+  user(){
+    try{
+      const u=CG.ok&&CG.sdk&&CG.sdk.user;if(!u||!u.isUserAccountAvailable)return;
+      const set=x=>{cgName=x&&x.username?cleanName(x.username):'';if(mode==='online'){net({k:'n',n:cgName});showNames();}};
+      Promise.resolve(u.getUser()).then(set).catch(()=>{});
+      if(u.addAuthListener)u.addAuthListener(set);
+    }catch(e){}
+  },
+  /* Host is waiting for a friend: room is joinable + invite button visible. */
+  open(code){
+    const g=this.g();if(!g)return;roomCode=code;cgInRoom=true;
+    try{g.updateRoom({roomId:code,isJoinable:true,inviteParams:{roomId:code}});}catch(e){}
+    try{g.showInviteButton({roomId:code});}catch(e){}
+  },
+  /* 2/2 players are in: nobody else can join, hide the invite button. */
+  full(){
+    const g=this.g();if(!g||!roomCode)return;cgInRoom=true;
+    try{g.updateRoom({roomId:roomCode,isJoinable:false});}catch(e){}
+    try{g.hideInviteButton();}catch(e){}
+  },
+  leave(){
+    const g=this.g(),was=cgInRoom;cgInRoom=false;roomCode='';
+    if(!g||!was)return;
+    try{g.hideInviteButton();}catch(e){}
+    try{g.leftRoom();}catch(e){}
+  },
+  /* In-game "Copy Invite Link" button. */
+  copy(){
+    const g=this.g();if(!g||!roomCode)return;
+    let l='';try{l=g.inviteLink({roomId:roomCode});}catch(e){}
+    Promise.resolve(l).then(u=>{
+      if(!u){toast('Invite link is not available right now');return;}
+      const ok=()=>toast('Invite link copied!'),
+      fb=()=>{try{const t=document.createElement('textarea');t.value=u;t.style.cssText='position:fixed;opacity:0';document.body.appendChild(t);t.select();const r=document.execCommand('copy');t.remove();r?ok():toast(u);}catch(e){toast(u);}};
+      try{navigator.clipboard.writeText(u).then(ok,fb);}catch(e){fb();}
+    });
+  },
+  invited(){const g=this.g();try{const p=g&&g.inviteParams;return p&&p.roomId?String(p.roomId):'';}catch(e){return '';}},
+  instant(){const g=this.g();try{return !!(g&&g.isInstantMultiplayer);}catch(e){return false;}},
+  joinInvite(code){
+    if(mode==='online'&&!over){toast('Finish or resign your current match first');return;}
+    modal.classList.add('hidden');isQ=false;join(code);
+  },
+  /* Called once the game is loaded: opened from an invite link / friend join -> join that room;
+     opened with isInstantMultiplayer -> go straight into a new private room (joinable immediately). */
+  start(){
+    const g=this.g();if(!g)return;
+    try{g.addJoinRoomListener(p=>{const c=p&&p.roomId?String(p.roomId):'';if(c)this.joinInvite(c);});}catch(e){}
+    const c=this.invited();
+    if(c)this.joinInvite(c);
+    else if(this.instant())onl('create');
+  }
+};
+const cleanName=t=>String(t||'').replace(/[\u0000-\u001f<>]/g,'').trim().slice(0,24);
+function showNames(){
+  if(mode!=='online')return;
+  $('n'+myP).textContent=cgName?`${cgName} (You)`:`You (Player ${myP})`;
+  $('n'+(3-myP)).textContent=oppName||`Opponent (Player ${3-myP})`;
+}
+/* Private rooms: play again with the same friend without leaving the room (both press Rematch). */
+function rematchUI(){const b=$('ag');b.disabled=false;b.textContent=mode==='online'&&!isQ?'↻ Rematch (same room)':'↻ Play Again';}
+function rematch(){
+  rmMe=true;net({k:'rr'});
+  if(rmOpp)goRematch();
+  else{$('ag').disabled=true;$('ag').textContent='Waiting for your friend…';}
+}
+function goRematch(){rmMe=rmOpp=false;$('ag').disabled=false;reset();}
 let gpT=0;
 /* Gameplay is "live" only while a match is on screen, not over, and no ad is playing. */
 const syncGP=()=>{clearTimeout(gpT);gpT=setTimeout(()=>CG.gameplay(!over&&menu.classList.contains('hidden')&&!adPlaying),0);};
@@ -305,7 +386,7 @@ function applyFeatures(){
 const isMob=()=>ctl==='mobile'||(ctl==='auto'&&matchMedia('(hover:none),(pointer:coarse)').matches);
 function applyCtl(){document.body.classList.toggle('mob',isMob());document.body.classList.toggle('pc',!isMob());render();}
 function tone(f,d,type,v,f2,t0){
-  if(mute||adMute)return;
+  if(mute||adMute||cgMute)return;
   try{
     ac=ac||new(window.AudioContext||window.webkitAudioContext)();if(ac.state==='suspended')ac.resume();
     const t=ac.currentTime+(t0||0),o=ac.createOscillator(),g=ac.createGain();
@@ -415,7 +496,7 @@ function end(w,why){
   $('mt').style.color=w===1?'#60a5fa':'#f87171';
   $('ms').textContent=(why||`${who} reached the finish line`)+(parts.length?` · ${parts.join(' · ')}`:'');
   $('pa').classList.toggle('hidden',!ONLINE||adDone||(on&&!q));   /* post-match ad: bot/local + online QUICK match (never private rooms) */
-  modal.classList.remove('hidden');
+  modal.classList.remove('hidden');rematchUI();
 }
 const pick=(c,T)=>{
   const mx=Math.max(...c.map(x=>x.s)),w=c.map(x=>Math.exp((x.s-mx)/T));let u=Math.random()*w.reduce((a,b)=>a+b);
@@ -513,7 +594,7 @@ document.addEventListener('click',e=>{
   else if(a==='menu'){if(mode==='online'&&!over)flash('Use Resign to leave an online match');else openMenu();}
   else if(a==='online')onl(v);
   else if(a==='reset'||a==='again'){
-    if(mode==='online'){if(a==='again'){netClose();mode='bot';modal.classList.add('hidden');reset();openMenu();}else flash('Restart isn’t available online');}
+    if(mode==='online'){if(a==='again'){if(!isQ&&over&&conn&&conn.open){rematch();return;}netClose();mode='bot';modal.classList.add('hidden');reset();openMenu();}else flash('Restart isn’t available online');}
     else if(a==='again')midAd(reset);else reset();
   }
   else if(a==='resign')resign();
@@ -522,7 +603,7 @@ document.addEventListener('click',e=>{
   else if(a==='ad')watchAd(v);
   else if(a==='ori'){ori=v;render();}
   else if(a==='ctl'){ctl=v;document.querySelectorAll('.cbtn').forEach(x=>x.classList.toggle('on',x.dataset.do==='ctl:'+v));applyCtl();}
-  else if(a==='snd'){mute=!mute;ST.set('bb_mute',mute?'1':'0');document.querySelectorAll('.snb').forEach(x=>x.textContent=mute?'🔇':'🔊');}
+  else if(a==='snd'){mute=!mute;ST.set('bb_mute',mute?'1':'0');document.querySelectorAll('.snb').forEach(x=>x.textContent=(mute||cgMute)?'🔇':'🔊');}
   else if(a==='lobby'){netClose();if(mode==='online')mode='bot';reset();openMenu();}
 });
 
@@ -603,11 +684,12 @@ const ALPHA='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',PFX='bbox2-',QN=4,rnd=n=>Math.flo
     return 'Could not connect to the public PeerJS signaling server (0.peerjs.com:443). It may be blocked by your network, browser, VPN, or firewall. Bot and local 2-player modes still work.';
   };
 function netUI(t,m,code,join){
+  $('ncp').classList.add('hidden');
   $('nt').textContent=t;$('nm').textContent=m;$('nc').textContent=code||'';
   $('ni').classList.toggle('hidden',!join);$('nj').classList.toggle('hidden',!join);$('net').classList.remove('hidden');
 }
 function drop(){clearTimeout(nTimer);try{conn&&conn.close();}catch(e){}try{peer&&peer.destroy();}catch(e){}conn=peer=null;}
-function netClose(){netTok++;drop();}
+function netClose(){netTok++;drop();CGM.leave();}
 function net(d){try{if(conn&&conn.open)conn.send(d);}catch(e){flash('Connection problem');}}
 function netFail(m){netClose();netUI('Online unavailable',m||msg());}
 function mkPeer(id,tok,ok,err){
@@ -663,8 +745,11 @@ function startOnline(role){
   $('n1').textContent=role===1?'You (Player 1)':'Opponent (Player 1)';
   $('n2').textContent=role===2?'You (Player 2)':'Opponent (Player 2)';
   $('net').classList.add('hidden');menu.classList.add('hidden');reset();
+  rmMe=rmOpp=false;oppName='';if(!isQ&&roomCode)CGM.full();net({k:'n',n:cgName});showNames();
 }
 function onData(d){
+  if(d&&d.k==='n'){oppName=cleanName(d.n);showNames();return;}
+  if(d&&d.k==='rr'){rmOpp=true;if(rmMe)goRematch();else if(over)toast('Your friend wants to play again!');return;}
   if(!d||over)return;rx=true;
   try{
     if(d.k==='m'&&turn!==myP)move(d.r,d.c);
@@ -678,7 +763,7 @@ function onData(d){
 window.addEventListener('pagehide',()=>{
   if(mode==='online'&&!over){try{if(conn&&conn.open)conn.send({k:'bye'});}catch(e){}try{conn&&conn.close();}catch(e){}}
 });
-function onClose(){if(mode==='online'&&!over)end(myP,'Opponent disconnected. You win!');}
+function onClose(){if(mode==='online'&&!over)end(myP,'Opponent disconnected. You win!');else if(mode==='online'&&over&&rmMe){rmMe=false;$('ms').textContent='Your friend left the room.';rematchUI();}}
 function quick(){
   const tok=++netTok,order=[...Array(QN).keys()].sort(()=>Math.random()-.5);let i=0;
   netUI('Quick Match','Searching for an opponent…');
@@ -699,7 +784,7 @@ function create(attempt=0){
   const tok=netTok,code=Array.from({length:4},()=>ALPHA[rnd(ALPHA.length)]).join('');
   netUI('Private Room','Connecting to the public PeerJS signaling server…');
   mkPeer('bbroom-'+code,tok,p=>{
-    peer=p;netUI('Private Room','Share this code with your friend and wait for them to join…',code);
+    peer=p;netUI('Private Room','Share this code with your friend and wait for them to join…',code);CGM.open(code);$('ncp').classList.toggle('hidden',!CG.ok);
     p.on('connection',c=>c.on('open',()=>{if(conn||tok!==netTok){c.close();return;}link(p,c,1);}));
     p.on('error',e=>{if(tok===netTok&&!conn)netFail(msg(e));});
   },e=>{
@@ -712,7 +797,7 @@ function create(attempt=0){
 function join(code){
   code=code.toUpperCase().replace(/[^A-Z0-9]/g,'');
   if(code.length!==4){$('nm').textContent='Enter the 4-character room code.';return;}
-  netClose();const tok=++netTok;netUI('Joining room…','Connecting…',code);
+  netClose();const tok=++netTok;roomCode=code;netUI('Joining room…','Connecting…',code);
   dial('bbroom-'+code,tok,r=>link(r.p,r.c,2,()=>netFail('Couldn’t enter that room.')),e=>netFail(msg(e)));
 }
 function onl(v){
@@ -721,6 +806,7 @@ function onl(v){
     else if(v==='create'){isQ=false;netClose();create();}
     else if(v==='join'){isQ=false;netClose();netUI('Join Room','Enter the 4-character room code.','',true);setTimeout(()=>$('ni').focus(),50);}
     else if(v==='go')join($('ni').value);
+    else if(v==='copy')CGM.copy();
     else if(v==='cancel'){netClose();$('net').classList.add('hidden');if(mode==='online'){mode='bot';reset();}openMenu();}
   }catch(e){netFail(msg(e));}
 }
@@ -821,16 +907,18 @@ $('pn').addEventListener('change',()=>{pname=($('pn').value.trim()||pname).slice
 /* Startup: init SDK -> loadingStart -> build the game -> wait for fonts -> loadingStop. */
 (async function boot(){
   await CG.init();                 /* never throws; resolves false if SDK missing/blocked/disabled */
+  CGM.initAudio();CGM.user();
   CG.loadingStart();
   try{
     loadSaved();applyFeatures();
-    setDiff('medium');reset();applyCtl();lbLoad();document.querySelectorAll('.snb').forEach(x=>x.textContent=mute?'🔇':'🔊');
+    setDiff('medium');reset();applyCtl();lbLoad();document.querySelectorAll('.snb').forEach(x=>x.textContent=(mute||cgMute)?'🔇':'🔊');
     booted=true;                   /* game is interactive as soon as it is built */
     if(document.fonts&&document.fonts.ready)await Promise.race([document.fonts.ready,new Promise(r=>setTimeout(r,2500))]);
   }finally{
     booted=true;
     CG.loadingStop();              /* everything (game + fonts) finished loading */
   }
+  CGM.start();                     /* invite link / friend join / instant multiplayer */
 })();
 </script>
 </body>
