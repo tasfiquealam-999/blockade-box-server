@@ -4,9 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Blockade Box</title>
+<script src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;800;900&display=swap">
 <style>
+/* Self-hosted fonts: drop the two .woff2 files into /fonts (see README). Missing files just fall back to the system font. */
+@font-face{font-family:Inter;font-style:normal;font-weight:100 900;font-display:swap;src:local('Inter'),url(fonts/inter-latin-wght-normal.woff2) format('woff2')}
+@font-face{font-family:Orbitron;font-style:normal;font-weight:400 900;font-display:swap;src:local('Orbitron'),url(fonts/orbitron-latin-wght-normal.woff2) format('woff2')}
 :root{--bg:#0b0e14;--panel:#131722;--card:#1c2230;--tile:#252d3d;--line:#2a3447;--p1:#3b82f6;--p1g:rgba(59,130,246,.6);--p2:#ef4444;--p2g:rgba(239,68,68,.6);--gold:#f59e0b;--tx:#e2e8f0;--mut:#94a3b8;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 *{box-sizing:border-box;user-select:none;font-family:Inter,system-ui,sans-serif}
@@ -26,14 +29,14 @@ body{margin:0;background:var(--bg);color:var(--tx);min-height:100vh;display:flex
 .t{background:var(--tile);border-radius:9px;display:flex;align-items:center;justify-content:center;position:relative}
 .t.ok{background:rgba(var(--hl),.18);border:2px dashed rgb(var(--hl));cursor:pointer;animation:pl 1.5s infinite}
 @keyframes pl{50%{border-color:rgba(var(--hl),.35)}}
-.g1{background:linear-gradient(rgba(59,130,246,.3),rgba(59,130,246,.3)),var(--tile);box-shadow:inset 0 0 0 1px rgba(59,130,246,.25)} /* Blue player side */
-.g2{background:linear-gradient(rgba(239,68,68,.3),rgba(239,68,68,.3)),var(--tile);box-shadow:inset 0 0 0 1px rgba(239,68,68,.25)} /* Red player side */
+.g1{background:linear-gradient(rgba(59,130,246,.3),rgba(59,130,246,.3)),var(--tile);box-shadow:inset 0 0 0 1px rgba(59,130,246,.25)} 
+.g2{background:linear-gradient(rgba(239,68,68,.3),rgba(239,68,68,.3)),var(--tile);box-shadow:inset 0 0 0 1px rgba(239,68,68,.25)} 
 .board{position:relative;--pd:16px;--gl:8px}
 body.mob .board{--pd:10px;--gl:6px}
 .board::before,.board::after{content:"";position:absolute;left:var(--pd);right:var(--pd);height:var(--gl);border-radius:0;pointer-events:none;
 background:repeating-linear-gradient(90deg,var(--ca) 0 calc(100%/120),var(--cb) 0 calc(100%/60)) top/100% 50% no-repeat,repeating-linear-gradient(90deg,var(--cb) 0 calc(100%/120),var(--ca) 0 calc(100%/60)) bottom/100% 50% no-repeat}
-.board::before{--ca:#fca5a5;--cb:#dc2626;top:calc(var(--pd) - var(--gl) - 3px);box-shadow:0 0 10px var(--p2g)} /* Red side: top */
-.board::after{--ca:#93c5fd;--cb:#2563eb;bottom:calc(var(--pd) - var(--gl) - 3px);box-shadow:0 0 10px var(--p1g)} /* Blue side: bottom */
+.board::before{--ca:#fca5a5;--cb:#dc2626;top:calc(var(--pd) - var(--gl) - 3px);box-shadow:0 0 10px var(--p2g)} 
+.board::after{--ca:#93c5fd;--cb:#2563eb;bottom:calc(var(--pd) - var(--gl) - 3px);box-shadow:0 0 10px var(--p1g)} 
 .clock{font-size:20px;font-weight:900;font-variant-numeric:tabular-nums;color:#cbd5e1}
 .clock.on{color:#fbbf24}.clock.low{color:#f87171}.clock.low.on{animation:pl 1s infinite}
 .pawn{display:block;width:68%;height:68%;border-radius:50%}
@@ -79,26 +82,77 @@ body.mob .board{--g:8px;padding:10px;width:min(94vw,520px)}
 .mobonly{display:none}
 body.mob .mobonly{display:grid}
 .ori{margin-top:12px;grid-template-columns:1fr 1fr;gap:10px}
-.ori .btn{display:flex;align-items:center;justify-content:center;gap:8px;padding:12px}
+.ori .btn{display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;touch-action:none}
 .ori .btn.on{border-color:#60a5fa;background:rgba(37,99,235,.2);color:#fff}
 .bar{display:inline-block;border-radius:3px;background:var(--tc,#3b82f6)}
 .pv{border-radius:5px;pointer-events:none;z-index:5}
-.pv.bad{background:rgba(100,116,139,.5);outline:2px dashed #94a3b8}
+.pv.good{background:#22c55e!important;box-shadow:0 0 12px rgba(34,197,94,.8)!important;outline:2px solid #4ade80!important}
+.pv.bad{background:rgba(239,68,68,.5)!important;outline:2px dashed #f87171!important}
 .btn.grn{background:#16a34a;border-color:#16a34a;color:#fff;font-weight:800}.btn.grn:hover{background:#22c55e}
 .btn.yel{background:#eab308;border-color:#eab308;color:#111;font-weight:800}.btn.yel:hover{background:#facc15}
 .seg2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.seg2 .btn{margin:0;padding:12px 6px;font-size:12px}
 .inp{width:100%;padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:#fff;font-size:22px;font-weight:900;letter-spacing:.3em;text-align:center;text-transform:uppercase;user-select:text;-webkit-user-select:text;margin-top:6px}
 .box{max-height:calc(100vh - 32px);overflow-y:auto}
 .total{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:18px;padding:10px;border:1px solid var(--line);border-radius:14px;background:var(--card)}
+
+.board.fl::before{--ca:#93c5fd;--cb:#2563eb;box-shadow:0 0 10px var(--p1g)}.board.fl::after{--ca:#fca5a5;--cb:#dc2626;box-shadow:0 0 10px var(--p2g)}
+.side.fl #c1{order:1}.side.fl #c2{order:2}.side.fl #gcard{order:3}.side.fl .btns{order:4}
+.pv{touch-action:none}
+.cz{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:60;display:none;align-items:center;justify-content:center;gap:8px;width:min(86vw,360px);padding:16px;border-radius:16px;border:2px dashed #f87171;background:rgba(127,29,29,.88);color:#fff;font-weight:900;font-size:15px;pointer-events:none;box-shadow:0 10px 30px rgba(0,0,0,.6)}
+.cz.on{display:flex}.cz.hot{background:#dc2626;border-style:solid;border-color:#fecaca;transform:translateX(-50%) scale(1.05)}
+#menu{background:radial-gradient(800px 420px at 0 0,rgba(37,99,235,.24),transparent 60%),radial-gradient(800px 520px at 100% 100%,rgba(220,38,38,.22),transparent 60%),#05070c;align-items:flex-start;overflow-y:auto;padding:0}
+.lw{width:100%;max-width:1240px;margin:0 auto;padding:0 16px 24px}
+.hd{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 4px;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:12px}.hd .logo{background:linear-gradient(135deg,#2563eb,#dc2626);color:#fff;border:0;width:42px;height:42px}
+.ttl,.ttl *,.pl b,.rk b{font-family:Orbitron,Inter,sans-serif!important}
+.ttl{margin:0;font-size:22px;font-weight:900;letter-spacing:.04em;line-height:1.1}
+.ttl span{background-clip:text;-webkit-background-clip:text;color:transparent}.t1{background-image:linear-gradient(180deg,#fff,#3b82f6)}.t2{background-image:linear-gradient(180deg,#fca5a5,#dc2626)}
+.hs{display:flex;gap:10px;align-items:center}
+.pl{display:flex;align-items:center;gap:8px;background:#0e1424;border:1px solid var(--line);border-radius:12px;padding:8px 14px}.pl b{font-size:18px;color:#fff;display:block;line-height:1}.pl small{font-size:9px;display:block}
+.hero{margin-top:16px;border-radius:24px;padding:28px;border:1px solid rgba(59,130,246,.3);background:linear-gradient(110deg,#0c1a3a,#0a0f1d 60%,#2a0d12);display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}
+.hero h2{font-size:clamp(26px,5vw,52px);margin:14px 0 8px;font-weight:900;color:#fff;letter-spacing:-.02em;line-height:1.05}.hero p{margin:0;color:var(--mut);font-size:14px;max-width:520px}
+.bdg{display:inline-flex;gap:8px;align-items:center;font-size:12px;font-weight:800;color:#60a5fa;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.35);border-radius:99px;padding:5px 12px}.bdg i{width:8px;height:8px;border-radius:50%;background:#3b82f6}
+.rk{text-align:center;border:1px solid var(--line);border-radius:16px;padding:18px 32px;background:rgba(10,14,26,.7)}.rk small{letter-spacing:.14em;font-weight:900}
+.rk b{display:block;font-size:42px;margin:6px 0;background:linear-gradient(90deg,#60a5fa,#f87171);-webkit-background-clip:text;background-clip:text;color:transparent}
+.lg{display:grid;grid-template-columns:1.25fr 1fr;gap:20px;margin-top:20px;align-items:start}
+.lcol{display:flex;flex-direction:column;gap:14px}.lt{font-size:12px;font-weight:900;letter-spacing:.08em;color:var(--mut)}
+.mc{display:flex;align-items:center;gap:14px;padding:16px;border-radius:18px;border:1px solid var(--line);background:linear-gradient(120deg,#0e1730,#0a0f1d);text-align:left;color:#fff;width:100%;font:inherit}
+button.mc{cursor:pointer}button.mc:hover{border-color:#3b82f6}
+.ic{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;background:rgba(37,99,235,.2);border:1px solid rgba(59,130,246,.4);flex:none}.ic.r{background:rgba(220,38,38,.18);border-color:rgba(239,68,68,.45)}
+.mc b{font-size:17px}.mc small{display:block;margin-top:3px}.mc>div{flex:1;min-width:0}
+.tag{font-size:10px;font-weight:900;color:#60a5fa;background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.4);border-radius:99px;padding:2px 8px;margin-left:8px}
+.bot{display:block}.bot .row2{display:flex;align-items:center;gap:14px}
+.dif{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}.dif .btn{margin:0;padding:12px 6px}
+.g2c{display:grid;grid-template-columns:1fr 1fr;gap:14px}.mini{display:flex;gap:8px;margin-top:8px}.mini .btn{padding:7px 12px;font-size:11px}
+.adb{background:linear-gradient(90deg,#b91c1c,#ef4444);border-color:#ef4444;color:#fff;font-weight:900;padding:12px 16px;white-space:nowrap}.adb:disabled{opacity:.45}
+.adp{margin-top:14px;border-color:rgba(245,158,11,.6);background:linear-gradient(110deg,#2b1d05,#0e1424 70%);box-shadow:0 0 22px rgba(245,158,11,.2);animation:adg 2.4s infinite ease-in-out}
+@keyframes adg{50%{box-shadow:0 0 34px rgba(245,158,11,.45);border-color:rgba(251,191,36,.95)}}
+.adp .ic{background:rgba(245,158,11,.2);border-color:rgba(245,158,11,.55)}
+.adp .adb{background:linear-gradient(90deg,#d97706,#f59e0b);border-color:#f59e0b;color:#111}
+.lbx{background:rgba(10,14,26,.86);border:1px solid var(--line);border-radius:22px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.lbh{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.pn{font-size:13px;letter-spacing:.03em;text-transform:none;text-align:left;margin:0;padding:9px 12px}
+.lbl{overflow-y:auto;max-height:46vh;display:flex;flex-direction:column;gap:6px}
+.lr{display:grid;grid-template-columns:42px 1fr auto;gap:8px;padding:10px 12px;border-radius:12px;font-weight:800;font-size:13px;align-items:center;background:#0e1424;border:1px solid var(--line)}
+.lr b{color:#60a5fa;font-size:12px;font-variant-numeric:tabular-nums}.lr i{font-style:normal;color:var(--mut)}.lr span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.lr.me{border-color:#3b82f6;background:rgba(37,99,235,.22)}
+.lbme{display:flex;justify-content:space-between;gap:8px;border:1px solid rgba(239,68,68,.55);background:rgba(127,29,29,.22);border-radius:12px;padding:12px 14px;font-weight:900;color:#fecaca;font-size:13px}
+.blk{border:1px solid var(--line);border-radius:14px;padding:12px;background:rgba(19,23,34,.6)}.blk .seg3{margin:8px 0 0}
+#toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);background:#1c2230;border:1px solid var(--line);color:#fff;font-weight:800;font-size:13px;padding:12px 18px;border-radius:14px;box-shadow:0 12px 30px rgba(0,0,0,.6);opacity:0;pointer-events:none;transition:.25s;z-index:200;max-width:90vw;text-align:center}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+@media(max-width:860px){.adp .adb{width:100%}.lg{grid-template-columns:1fr}.g2c{grid-template-columns:1fr}.hero{padding:20px}.mc{flex-wrap:wrap}}
+body.noon .onl,body.noon .adp,body.noon .gp,body.noon #pa,body.noon #gcard{display:none!important}
+body.noon .g2c{grid-template-columns:1fr}
+body.nolb .rk,body.nolb .lbx{display:none!important}
+body.nolb .lg{grid-template-columns:1fr}
 </style>
 </head>
 <body>
 <main class="app">
   <section class="panel">
     <div class="top">
-      <span><i class="dot d2" style="margin-left:0"></i>P2 goal: bottom</span>
+      <span id="gl"></span>
       <span id="st" class="pill c1"></span>
-      <span>P1 goal: top<i class="dot d1" style="margin-right:0"></i></span>
+      <span id="gr"></span>
     </div>
     <div id="board" class="board"></div>
     <div class="ori mobonly"><button id="oh" class="btn on" data-do="ori:h"><i class="bar" style="width:24px;height:6px"></i> Horizontal</button><button id="ov" class="btn" data-do="ori:v"><i class="bar" style="width:6px;height:24px"></i> Vertical</button></div>
@@ -106,32 +160,45 @@ body.mob .mobonly{display:grid}
   </section>
   <aside class="side">
     <div class="card row">
-      <div class="row" style="justify-content:flex-start;gap:12px"><div class="logo">B</div><div><b style="font-size:14px">BLOCKADE BOX</b><br><small>v2.2 • Grid Edition</small></div></div>
-      <div class="row" style="gap:8px"><button id="sn" class="btn" data-do="snd">🔊</button><button class="btn" data-do="menu">☰</button></div>
+      <div class="row" style="justify-content:flex-start;gap:12px"><div class="logo">B</div><div><b style="font-size:14px">BLOCKADE BOX</b><br><small>v3.0 • Arena Edition</small></div></div>
+      <div class="row" style="gap:8px"><button id="sn" class="btn snb" data-do="snd">🔊</button><button class="btn" data-do="menu">☰</button></div>
     </div>
     <div id="c2" class="card"><div class="row"><span><i class="dot d2" style="margin-left:0"></i><b id="n2" style="font-size:14px">AI Bot (Medium)</b></span><span class="row" style="gap:10px"><b id="t2" class="clock hidden"></b><span id="w2" class="mut">10/10</span></span></div><div id="b2" class="bars"></div></div>
     <div id="c1" class="card"><div class="row"><span><i class="dot d1" style="margin-left:0"></i><b id="n1" style="font-size:14px">You (Player 1)</b></span><span class="row" style="gap:10px"><b id="t1" class="clock hidden"></b><span id="w1" class="mut">10/10</span></span></div><div id="b1" class="bars"></div></div>
-    <div class="card row"><span><small>💎 GEMS THIS GAME</small><b id="gt" class="gold">0</b></span><small id="vl">+15 for victory</small></div>
+    <div id="gcard" class="card"><div class="row"><span><small>💎 GEMS THIS GAME</small><b id="gt" class="gold">0</b></span><small id="vl"></small></div><button id="bw" class="btn grn hidden" data-do="buy" style="width:100%;margin-top:10px"></button></div>
     <div class="btns"><button class="btn" data-do="reset">↻ Restart</button><button class="btn" data-do="resign">⚑ Resign</button></div>
   </aside>
 </main>
 
-<div id="menu" class="ov"><div class="box">
-  <h1>BLOCKADE BOX</h1>
-  <p>Outsmart your opponent by crossing the grid and erecting neon walls.</p>
-  <div class="total">💎 <small>TOTAL GEMS</small> <b id="tg" class="gold">0</b></div>
-  <small>AI BOT DIFFICULTY</small>
-  <div class="seg3">
-    <button class="btn dbtn" data-do="diff:easy">Easy</button>
-    <button class="btn dbtn" data-do="diff:medium">Medium</button>
-    <button class="btn dbtn" data-do="diff:hard">Hard</button>
+<div id="menu" class="ov"><div class="lw">
+  <header class="hd">
+    <div class="brand"><div class="logo">B</div><div><h1 class="ttl"><span class="t1">BLOCKADE</span> <span class="t2">BOX</span></h1><small>ARENA EDITION</small></div></div>
+    <div class="hs"><div class="pl">🏆<div><small>POINTS</small><b id="tp">0</b></div></div><div class="pl gp">💎<div><small>GEMS</small><b id="tg">0</b></div></div><button class="btn snb" data-do="snd" style="padding:14px">🔊</button></div>
+  </header>
+  <div class="mc adp"><span class="ic">💎</span><div><b>Free Gems Reward</b><small>Watch a short ad for +5 gems (ads used: <span id="adc">0/20</span>)</small></div><button id="adb" class="btn adb" data-do="ad:lobby">▶ WATCH AD (+5 💎)</button></div>
+  <section class="hero">
+    <div><span class="bdg"><i></i><span id="bdt">Worldwide Matchmaking Active</span></span><h2>Block Paths. Outsmart Opponents.</h2><p>Race across the grid to reach the goal line. Erect strategic barricades to block enemy pawns without trapping yourself.</p></div>
+    <div class="rk"><small>GLOBAL RANK</small><b id="hr">#–</b><small id="hs2"></small></div>
+  </section>
+  <div class="lg">
+    <div class="lcol">
+      <div class="blk"><small>CONTROLS</small><div class="seg3"><button class="btn cbtn on" data-do="ctl:auto">Auto</button><button class="btn cbtn" data-do="ctl:pc">PC</button><button class="btn cbtn" data-do="ctl:mobile">Mobile</button></div></div>
+      <div class="lt">🎮 SELECT GAME MODE</div>
+      <button class="mc onl" data-do="online:quick"><span class="ic">🌐</span><div><b>Online Quick Match<span class="tag">+30 PTS</span></b><small>Ranked 1v1 · 5:00 per side · 4 gem boxes (+5 💎 each) · Loss −10 pts</small></div><span style="font-size:22px;color:var(--mut)">→</span></button>
+      <div class="mc bot"><div class="row2"><span class="ic r">🤖</span><div><b>VS Computer (AI Bot)</b><small>Practice offline against AI with variable difficulty.</small></div></div>
+        <div class="dif"><button class="btn" data-do="bot:easy">Easy (+1 PT)</button><button class="btn" data-do="bot:medium">Medium (+10)</button><button class="btn" data-do="bot:hard">Hard (+30)</button></div></div>
+      <div class="g2c">
+        <div class="mc onl"><span class="ic r">🔑</span><div><b>Private Room</b><small>Create or join a code room</small><div class="mini"><button class="btn" data-do="online:create">Create</button><button class="btn" data-do="online:join">Join</button></div></div></div>
+        <button class="mc" data-do="start:local"><span class="ic">👥</span><div><b>Pass &amp; Play (1v1)</b><small>Local match on 1 device (+5 PTS)</small></div></button>
+      </div>
+    </div>
+    <section class="lbx">
+      <div class="lbh"><b style="font-size:13px;letter-spacing:.06em">🌍 GLOBAL LEADERBOARD (TOP 100)</b><small id="lbn" class="tag"></small></div>
+      <input id="pn" class="inp pn" maxlength="14" placeholder="Your leaderboard name" autocomplete="off">
+      <div id="lbl" class="lbl"></div>
+      <div id="lbme" class="lbme"></div>
+    </section>
   </div>
-  <small>CONTROLS</small>
-  <div class="seg3"><button class="btn cbtn on" data-do="ctl:auto">Auto</button><button class="btn cbtn" data-do="ctl:pc">PC</button><button class="btn cbtn" data-do="ctl:mobile">Mobile</button></div>
-  <button class="btn pri" data-do="start:bot">🤖 Play vs AI Bot</button>
-  <button class="btn" data-do="start:local">👥 Pass &amp; Play (Local 1v1)</button>
-  <button class="btn grn" data-do="online:quick">🌐 Online Matchmaking (Quick Match)</button>
-  <div class="seg2"><button class="btn yel" data-do="online:create">🔑 Create Private Room</button><button class="btn yel" data-do="online:join">🚪 Join Room</button></div>
 </div></div>
 
 <div id="net" class="ov hidden" style="z-index:110"><div class="box">
@@ -147,36 +214,98 @@ body.mob .mobonly{display:grid}
   <div id="mi" style="font-size:54px;line-height:1.2"></div>
   <h2 id="mt"></h2>
   <p id="ms"></p>
+  <button id="pa" class="btn grn" data-do="ad:post">▶ Watch Ad · +15 💎</button>
   <button class="btn pri" data-do="again">↻ Play Again</button>
   <button class="btn" data-do="lobby">🏠 Go to Lobby</button>
 </div></div>
 
+<div id="adv" class="ov hidden" style="z-index:120"><div class="box"><h2>📺 Ad</h2><p>Test ad preview. Real CrazyGames rewarded ads play here once the game runs on CrazyGames.</p><button id="ads" class="btn pri" disabled>Reward in 5s…</button></div></div>
+
+<div id="cz" class="cz">✕ Drag here &amp; release to cancel</div>
+<div id="toast" role="status" aria-live="polite"></div>
+
 <script>
 const $=i=>document.getElementById(i),D=[[1,0],[-1,0],[0,1],[0,-1]],goal={1:0,2:8};
 const board=$('board'),st=$('st'),menu=$('menu'),modal=$('modal');
-let W,pos,wl,gems,gm,turn,over,mode='bot',diff='medium',total=0,gen=0,ft,ctl='auto',ori='h',drag=null,skipUntil=0,ac,mute=false,tm,bs=1,bp={lane:4,lust:1,o:'h'},lastT=0,peer=null,conn=null,myP=1,netTok=0,nTimer=null,rx=false;
-// 5-minute clock per player (multiplayer / Pass & Play only)
-const fmt=ms=>{const s=Math.ceil(ms/1000);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
+const ONLINE=true;   /* online modes + gems/ads; set false to hide them */
+let W,pos,wl,gems,gm,turn,over,mode='bot',diff='medium',total=0,gen=0,ft,ctl='auto',ori='h',drag=null,skipUntil=0,ac,mute=false,tm,bs=1,bp={lane:4,lust:1,o:'h'},lastT=0,peer=null,conn=null,myP=1,netTok=0,nTimer=null,rx=false,points=0,isQ=false,xw={1:0,2:0},resigned=false,adsUsed=0,adDone=false,adPlaying=false,adBusy=false,adMute=false,booted=false,gamesDone=0;
+const fmt=ms=>{const s=Math.ceil(Math.max(0,ms)/1000);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
+
+/* ---------- CrazyGames SDK v3 wrapper ----------
+   - SDK.init() must finish before any other SDK call, so everything goes through this wrapper.
+   - Every call is try/catch-guarded: if the SDK is missing, blocked or "disabled" (any domain that
+     isn't CrazyGames/localhost) the game keeps working normally without it.
+   - gameplayStart/Stop are driven by one function (syncGP) so they are never sent twice in a row. */
+const CG=(()=>{
+  const S=()=>window.CrazyGames&&window.CrazyGames.SDK;
+  const call=f=>{try{f(S());}catch(e){console.warn('[CrazyGames SDK]',e);}};
+  let ok=false,env='none',gp=false;
+  return{
+    get sdk(){return S();},
+    get ok(){return ok;},
+    get adsLive(){return ok&&env==='crazygames';},   /* real ads only on CrazyGames itself */
+    init(){
+      const s=S();if(!s)return Promise.resolve(false);
+      const p=Promise.resolve().then(()=>s.init()).then(()=>{env=s.environment||'none';ok=env==='crazygames'||env==='local';return ok;})
+        .catch(e=>{console.warn('[CrazyGames SDK] init failed',e);return false;});
+      return Promise.race([p,new Promise(r=>setTimeout(()=>r(false),6000))]);   /* never hang the game on a dead SDK */
+    },
+    loadingStart(){if(ok)call(s=>s.game.loadingStart());},
+    loadingStop(){if(ok)call(s=>s.game.loadingStop());},
+    gameplay(on){if(!ok||gp===on)return;gp=on;call(s=>on?s.game.gameplayStart():s.game.gameplayStop());},
+    happy(){if(ok)call(s=>s.game.happytime());}
+  };
+})();
+let gpT=0;
+/* Gameplay is "live" only while a match is on screen, not over, and no ad is playing. */
+const syncGP=()=>{clearTimeout(gpT);gpT=setTimeout(()=>CG.gameplay(!over&&menu.classList.contains('hidden')&&!adPlaying),0);};
 function showClock(){
   for(const p of[1,2]){
     const e=$('t'+p);e.textContent=fmt(tm[p]);
-    e.className='clock'+(mode==='local'?'':' hidden')+(turn===p&&!over?' on':'')+(tm[p]<30000?' low':'');
+    e.className='clock'+(mode==='local'||mode==='online'?'':' hidden')+(turn===p&&!over?' on':'')+(tm[p]<30000?' low':'');
   }
 }
+/* Game clock. Online matches use the REAL elapsed time (never capped), so a throttled/backgrounded tab
+   can't make the two players' clocks drift apart. Each player's own screen is the referee for their own
+   clock: when your clock hits 0 you tell the opponent ({k:'t'}); the opponent only declares your timeout
+   by themselves if no word arrives within GRACE ms (covers a frozen/dead connection). */
+const GRACE=4000;
 setInterval(()=>{
-  const now=Date.now(),dt=Math.min(now-lastT,1000);lastT=now;
-  if(!tm||mode!=='local'||over||!menu.classList.contains('hidden'))return;
-  tm[turn]-=dt;
-  if(tm[turn]<=0){tm[turn]=0;showClock();end(3-turn,`Time’s up! Player ${turn} ran out of time.`);return;}
+  const now=Date.now(),raw=now-lastT;lastT=now;
+  if(!tm||(mode!=='local'&&mode!=='online')||over||adPlaying)return;
+  if(mode==='local'&&!menu.classList.contains('hidden'))return;
+  tm[turn]-=mode==='online'?raw:Math.min(raw,1000);
+  if(tm[turn]<=0){
+    if(mode==='online'){
+      if(turn===myP){tm[turn]=0;showClock();net({k:'t'});end(3-myP,'Time’s up! You ran out of time.');return;}
+      if(tm[turn]>-GRACE){showClock();return;}
+      tm[turn]=0;showClock();end(myP,'Your opponent ran out of time.');return;
+    }
+    tm[turn]=0;showClock();end(3-turn,`Time’s up! Player ${turn} ran out of time.`);return;
+  }
   showClock();
 },200);
-try{total=+localStorage.getItem('bb_gems')||0;mute=localStorage.getItem('bb_mute')==='1';}catch(e){}
-const save=()=>{try{localStorage.setItem('bb_gems',total);}catch(e){}};
+/* Saved data: CrazyGames SDK data module when available (syncs across devices for logged-in players), else localStorage. */
+const ST={
+  get(k){try{const d=CG.ok&&CG.sdk&&CG.sdk.data;if(d)return d.getItem(k);}catch(e){}try{return localStorage.getItem(k);}catch(e){return null;}},
+  set(k,v){try{const d=CG.ok&&CG.sdk&&CG.sdk.data;if(d){d.setItem(k,String(v));return;}}catch(e){}try{localStorage.setItem(k,String(v));}catch(e){}}
+};
+function loadSaved(){
+  total=+ST.get('bb_gems')||0;points=+ST.get('bb_pts')||0;adsUsed=+ST.get('bb_ads')||0;mute=ST.get('bb_mute')==='1';
+  pid=ST.get('bb_id')||'';pname=ST.get('bb_name')||'';
+  if(!pid){pid='p'+Math.random().toString(36).slice(2,10);pname='Player'+(1000+Math.floor(Math.random()*9000));ST.set('bb_id',pid);ST.set('bb_name',pname);}
+  $('pn').value=pname;
+}
+const save=()=>{ST.set('bb_gems',total);ST.set('bb_pts',points);ST.set('bb_ads',adsUsed);};
+function applyFeatures(){
+  document.body.classList.toggle('noon',!ONLINE);
+  document.body.classList.toggle('nolb',!LB_API);
+  if(!ONLINE)$('bdt').textContent='Free to play · Strategy Arena';
+}
 const isMob=()=>ctl==='mobile'||(ctl==='auto'&&matchMedia('(hover:none),(pointer:coarse)').matches);
 function applyCtl(){document.body.classList.toggle('mob',isMob());document.body.classList.toggle('pc',!isMob());render();}
-// Sounds: small synthesized effects, no audio files needed
 function tone(f,d,type,v,f2,t0){
-  if(mute)return;
+  if(mute||adMute)return;
   try{
     ac=ac||new(window.AudioContext||window.webkitAudioContext)();if(ac.state==='suspended')ac.resume();
     const t=ac.currentTime+(t0||0),o=ac.createOscillator(),g=ac.createGain();
@@ -194,29 +323,26 @@ const sfx={
   win:()=>[523,659,784,1047].forEach((f,i)=>tone(f,.24,'triangle',.16,0,i*.11)),
   lose:()=>[392,330,262,196].forEach((f,i)=>tone(f,.26,'triangle',.16,0,i*.13))
 };
-const area=(t,r,c)=>t==='h'?`${2*r+2}/${2*c+1}/${2*r+3}/${2*c+4}`:`${2*r+1}/${2*c+2}/${2*r+4}/${2*c+3}`;
-// Nearest wall position (grid intersection) under the finger/mouse
+const flip=()=>mode==='online'&&myP===2;
+const area=(t,r,c)=>{if(flip()){r=7-r;c=7-c;}return t==='h'?`${2*r+2}/${2*c+1}/${2*r+3}/${2*c+4}`:`${2*r+1}/${2*c+2}/${2*r+4}/${2*c+3}`;};
 function slotAt(e){
   const R=board.getBoundingClientRect(),cs=getComputedStyle(board),g=parseFloat(cs.getPropertyValue('--g')),
     pd=parseFloat(cs.paddingLeft)+parseFloat(cs.borderLeftWidth),sp=(R.width-2*pd-8*g)/9+g,
     off=e.pointerType==='touch'?sp*.9:0,f=v=>Math.max(0,Math.min(7,Math.round((v+g/2)/sp)-1));
-  return{r:f(e.clientY-R.top-pd-off),c:f(e.clientX-R.left-pd)};
+  const r=f(e.clientY-R.top-pd-off),c=f(e.clientX-R.left-pd);return flip()?{r:7-r,c:7-c}:{r,c};
 }
 function showPv(e){
   const{r,c}=slotAt(e),ok=!!wallOk(ori,r,c);
   let pv=board.querySelector('.pv');if(!pv){pv=document.createElement('div');board.appendChild(pv);}
-  pv.className='pv '+(ok?'w'+turn:'bad');pv.style.gridArea=area(ori,r,c);drag.slot=ok?{r,c}:null;
+  pv.className='pv '+(ok?'good':'bad');pv.style.gridArea=area(ori,r,c);if(drag)drag.slot=ok?{r,c}:null;
 }
 const grid=()=>Array.from({length:8},()=>Array(8).fill(0));
 const inb=(r,c)=>r>=0&&c>=0&&r<9&&c<9;
-const human=()=>!over&&(mode==='local'||(mode==='online'?turn===myP:turn===1));
-
-// Is there a wall between two neighbouring cells?
+const human=()=>!over&&!adPlaying&&(mode==='local'||(mode==='online'?turn===myP:turn===1));
 const blocked=(r,c,r2,c2)=>{
   if(r===r2){const m=Math.min(c,c2);return!!((r>0&&W.v[r-1][m])||(r<8&&W.v[r][m]));}
   const m=Math.min(r,r2);return!!((c>0&&W.h[m][c-1])||(c<8&&W.h[m][c]));
 };
-// Shortest path length to a goal row (walls only, pawns ignored)
 const dist=(s,g)=>{
   const seen=new Set([s.r*9+s.c]),q=[[s.r,s.c,0]];
   for(let i=0;i<q.length;i++){
@@ -226,7 +352,6 @@ const dist=(s,g)=>{
   }
   return Infinity;
 };
-// Legal pawn moves, including jumping over the opponent
 const moves=p=>{
   const me=pos[p],op=pos[3-p],o=[];
   for(const[a,b]of D){
@@ -240,7 +365,6 @@ const moves=p=>{
   }
   return o;
 };
-// Wall rules: no overlap, no crossing, nobody may be fully trapped
 function wallOk(t,r,c){
   const o=t==='h'?'v':'h',[dr,dc]=t==='h'?[0,1]:[1,0];
   if(W[t][r][c]||W[o][r][c]||W[t][r+dr]?.[c+dc]||W[t][r-dr]?.[c-dc])return null;
@@ -254,7 +378,11 @@ function move(r,c){
   if(mode==='online'&&!rx)net({k:'m',r,c});
   pos[turn]={r,c};sfx.move();
   const i=gems.findIndex(g=>g.r===r&&g.c===c);
-  if(i>-1){gems.splice(i,1);gm[turn]+=5;sfx.gem();}
+  if(i>-1){
+    gems.splice(i,1);gm[turn]+=5;sfx.gem();
+    /* Online quick match: MY gems are credited to my wallet immediately, so I can spend them on an Extra Wall mid-match. */
+    if(mode==='online'&&isQ&&turn===myP){total+=5;save();toast('+5 💎 collected!');}
+  }
   if(r===goal[turn])return end(turn);
   next();
 }
@@ -265,21 +393,29 @@ function wall(t,r,c){
   W[t][r][c]=turn;wl[turn]--;sfx.wall();next();
 }
 function next(){
+  if(tm&&tm[turn]<0)tm[turn]=0;   /* mover was inside the timeout grace window: their move arrived in time */
   turn=3-turn;render();
   if(mode==='bot'&&turn===2&&!over){const g=gen;setTimeout(()=>{if(g===gen)bot();},350+Math.random()*500);}
 }
 function end(w,why){
-  over=true;
-  const loc=mode==='local',on=mode==='online',win=on?w===myP:(w===1||loc),who=loc?`Player ${w}`:on?(win?'You':'Your opponent'):w===1?'You':'The bot',bank=on?(win?30:0):win?gm[w]+15:0;
-  total+=bank;save();render();win?sfx.win():sfx.lose();
+  if(over)return;over=true;gamesDone++;
+  const loc=mode==='local',on=mode==='online',q=on&&isQ,win=on?w===myP:(w===1||loc),
+    who=loc?`Player ${w}`:on?(win?'You':'Your opponent'):w===1?'You':'The bot';
+  let pts=0;const gx=q?gm[myP]:0;
+  if(q)pts=win?30:-10;
+  else if(mode==='bot'&&win)pts={easy:1,medium:10,hard:30}[diff];
+  else if(loc&&!resigned)pts=5;
+  const old=points;points=Math.max(0,points+pts);save();   /* gems were already credited live when collected */lbSubmit();render();win?sfx.win():sfx.lose();if(win)CG.happy();
+  const dp=points-old,parts=[];
+  if(q||pts)parts.push(`${dp>0?'+':''}${dp} pts`);
+  if(gx)parts.push(`+${gx} 💎`);
   $('mi').textContent=win?'🏆':'💀';
   $('mt').textContent=loc?`Player ${w} Wins!`:on?(win?'Victory!':'Defeat'):w===1?'Victory!':'Defeat';
   $('mt').style.color=w===1?'#60a5fa':'#f87171';
-  $('ms').textContent=(why||`${who} reached the finish line`)+(bank?` · +${bank} gems 💎 (total ${total})`:'');
+  $('ms').textContent=(why||`${who} reached the finish line`)+(parts.length?` · ${parts.join(' · ')}`:'');
+  $('pa').classList.toggle('hidden',!ONLINE||adDone||(on&&!q));   /* post-match ad: bot/local + online QUICK match (never private rooms) */
   modal.classList.remove('hidden');
 }
-// Bot: scores every move/wall, then picks randomly among the good ones (more random on easy, tighter on hard).
-// Each game also gets a random style (bs): runner, balanced or blocker.
 const pick=(c,T)=>{
   const mx=Math.max(...c.map(x=>x.s)),w=c.map(x=>Math.exp((x.s-mx)/T));let u=Math.random()*w.reduce((a,b)=>a+b);
   return c[w.findIndex(x=>(u-=x)<=0)]||c[0];
@@ -287,7 +423,7 @@ const pick=(c,T)=>{
 const gd=p=>Math.min(99,...gems.map(g=>Math.abs(g.r-p.r)+Math.abs(g.c-p.c)));
 function bot(){
   if(over||turn!==2)return;
-  // Per-game personality (bp): favourite lane, gem appetite, wall orientation. Plus noise and occasional detours.
+  if(adPlaying){const g=gen;setTimeout(()=>{if(g===gen)bot();},400);return;}   /* frozen while an ad plays */
   const dm=dist(pos[2],8),dp=dist(pos[1],0),T={easy:3,medium:1.2,hard:.5}[diff],gp={easy:1.6,medium:.8,hard:.3}[diff]*bp.lust,g0=gd(pos[2]),
     nz={easy:3,medium:2,hard:1.2}[diff],eps={easy:.2,medium:.1,hard:.04}[diff],ws=[];
   const mv=moves(2).map(m=>({m,s:(dm-dist(m,8))*3+(g0-gd(m))*gp+(Math.abs(pos[2].c-bp.lane)-Math.abs(m.c-bp.lane))*.4+(Math.random()-.5)*nz}));
@@ -310,19 +446,20 @@ function bot(){
 }
 function resign(){
   if(over)return;
+  resigned=true;
   if(mode==='online'){net({k:'r'});return end(3-myP,'You resigned.');}
   mode==='local'?end(3-turn,`Player ${turn} resigned.`):end(2,'You resigned.');
 }
 function reset(){
-  gen++;over=false;turn=1;gm={1:0,2:0};tm={1:300000,2:300000};lastT=Date.now();bs=[.5,1,1.6][Math.floor(Math.random()*3)];
+  gen++;over=false;turn=1;resigned=false;adDone=false;xw={1:0,2:0};gm={1:0,2:0};tm={1:300000,2:300000};lastT=Date.now();bs=[.5,1,1.6][Math.floor(Math.random()*3)];
   bp={lane:Math.floor(Math.random()*9),lust:[.4,1,1.8][Math.floor(Math.random()*3)],o:Math.random()<.5?'h':'v'};
   pos={1:{r:8,c:4},2:{r:0,c:4}};wl={1:10,2:10};
   W={h:grid(),v:grid()};
-  gems=[{r:4,c:2},{r:4,c:6},{r:2,c:4},{r:6,c:4}];
+  gems=mode==='online'&&isQ?[{r:4,c:2},{r:4,c:6},{r:2,c:4},{r:6,c:4}]:[];
   modal.classList.add('hidden');render();
 }
 function start(m){
-  netClose();mode=m;
+  netClose();mode=m;isQ=false;
   $('n2').textContent=m==='bot'?`AI Bot (${diff[0].toUpperCase()+diff.slice(1)})`:'Player 2';
   $('n1').textContent=m==='bot'?'You (Player 1)':'Player 1';
   menu.classList.add('hidden');reset();
@@ -333,69 +470,128 @@ function setDiff(d){
 }
 function flash(m){st.textContent=m;clearTimeout(ft);ft=setTimeout(render,1500);}
 function render(){
-  const mv=human()?moves(turn):[],can=human()&&wl[turn]>0&&!isMob();
+  const mv=human()?moves(turn):[],can=human()&&wl[turn]>0;
   let h='';
   for(let r=0;r<9;r++)for(let c=0;c<9;c++){
     const p=pos[1].r===r&&pos[1].c===c?1:pos[2].r===r&&pos[2].c===c?2:0;
     const ok=mv.some(m=>m.r===r&&m.c===c);
-    h+=`<div class="t${r===0?' g2':r===8?' g1':''}${ok?' ok':''}" style="grid-area:${2*r+1}/${2*c+1}"${ok?` data-do="m:${r},${c}"`:''}>${p?`<i class="pawn p${p}"></i>`:gems.some(g=>g.r===r&&g.c===c)?'<b class="gem">💎</b>':''}</div>`;
+    h+=`<div class="t${r===0?' g2':r===8?' g1':''}${ok?' ok':''}" style="grid-area:${2*(flip()?8-r:r)+1}/${2*(flip()?8-c:c)+1}"${ok?` data-do="m:${r},${c}"`:''}>${p?`<i class="pawn p${p}"></i>`:gems.some(g=>g.r===r&&g.c===c)?'<b class="gem">💎</b>':''}</div>`;
   }
   for(const t of'hv')for(let r=0;r<8;r++)for(let c=0;c<8;c++){
-    const o=W[t][r][c],a=t==='h'?`${2*r+2}/${2*c+1}/${2*r+3}/${2*c+4}`:`${2*r+1}/${2*c+2}/${2*r+4}/${2*c+3}`;
+    const o=W[t][r][c],a=area(t,r,c);
     if(o)h+=`<div class="w w${o}" style="grid-area:${a}"></div>`;
     else if(can)h+=`<div class="s" style="grid-area:${a}" data-do="${t}:${r},${c}"></div>`;
   }
-  board.className='board p'+turn;board.innerHTML=h;
+  board.className='board p'+turn+(flip()?' fl':'');board.innerHTML=h;
   for(const p of[1,2]){
-    $('w'+p).textContent=wl[p]+'/10';
-    $('b'+p).innerHTML=Array.from({length:10},(_,i)=>`<i class="seg${i<wl[p]?' f'+p:''}"></i>`).join('');
+    $('w'+p).textContent=wl[p]+'/'+(10+xw[p]);
+    $('b'+p).innerHTML=Array.from({length:10+xw[p]},(_,i)=>`<i class="seg${i<wl[p]?' f'+p:''}"></i>`).join('');
     $('c'+p).className='card'+(turn===p&&!over?' on'+p:'');
   }
-  $('gt').textContent=mode!=='bot'?`${gm[1]} – ${gm[2]}`:gm[1];$('tg').textContent=total;
+  $('gt').textContent=mode!=='bot'?`${gm[1]} – ${gm[2]}`:gm[1];$('tg').textContent=total;$('tp').textContent=points;$('adc').textContent=adsUsed+'/20';$('adb').disabled=adsUsed>=20;
   $('oh').classList.toggle('on',ori==='h');$('ov').classList.toggle('on',ori==='v');
   document.documentElement.style.setProperty('--tc',turn===1?'var(--p1)':'var(--p2)');
-  $('vl').textContent=mode==='online'?'+30 for victory':'+15 for victory';
+  const q=mode==='online'&&isQ,fl=flip();
+  $('gcard').classList.toggle('hidden',!q);$('vl').textContent=`+5 💎 per box · Wallet: ${total} 💎`;
+  const bw=$('bw');bw.classList.toggle('hidden',!q||over);bw.textContent=`🧱 Extra Wall · 30 💎 (${xw[myP]}/2)`;bw.disabled=total<30||xw[myP]>=2;
+  document.querySelector('.side').classList.toggle('fl',fl);
+  $('gl').innerHTML=fl?'<i class="dot d1" style="margin-left:0"></i>P1 goal: bottom':'<i class="dot d2" style="margin-left:0"></i>P2 goal: bottom';
+  $('gr').innerHTML=fl?'P2 goal: top<i class="dot d2" style="margin-right:0"></i>':'P1 goal: top<i class="dot d1" style="margin-right:0"></i>';
   st.textContent=over?'Game over':mode==='online'?(turn===myP?'Your Turn':'Opponent’s Turn'):turn===1?(mode==='bot'?'Your Turn':'Player 1’s Turn'):(mode==='bot'?'Bot thinking…':'Player 2’s Turn');
-  st.className='pill c'+turn;if(tm)showClock();
+  st.className='pill c'+turn;if(tm)showClock();syncGP();
 }
 document.addEventListener('click',e=>{
-  if(Date.now()<skipUntil)return;
+  if(!booted||Date.now()<skipUntil)return;
   const b=e.target.closest('[data-do]');if(!b)return;
   const[a,v='']=b.dataset.do.split(':'),[r,c]=v.split(',').map(Number);
   if('mhv'.indexOf(a)<0)sfx.ui();
   if(a==='m'){if(human())move(r,c);}
   else if(a==='h'||a==='v'){if(human())wall(a,r,c);}
   else if(a==='diff')setDiff(v);
-  else if(a==='start')start(v);
-  else if(a==='menu')menu.classList.remove('hidden');
+  else if(a==='start')midAd(()=>start(v));
+  else if(a==='menu'){if(mode==='online'&&!over)flash('Use Resign to leave an online match');else openMenu();}
   else if(a==='online')onl(v);
   else if(a==='reset'||a==='again'){
-    if(mode==='online'){if(a==='again'){netClose();mode='bot';modal.classList.add('hidden');reset();menu.classList.remove('hidden');}else flash('Restart isn’t available online');}
-    else reset();
+    if(mode==='online'){if(a==='again'){netClose();mode='bot';modal.classList.add('hidden');reset();openMenu();}else flash('Restart isn’t available online');}
+    else if(a==='again')midAd(reset);else reset();
   }
   else if(a==='resign')resign();
+  else if(a==='buy')buy();
+  else if(a==='bot'){setDiff(v);midAd(()=>start('bot'));}
+  else if(a==='ad')watchAd(v);
   else if(a==='ori'){ori=v;render();}
   else if(a==='ctl'){ctl=v;document.querySelectorAll('.cbtn').forEach(x=>x.classList.toggle('on',x.dataset.do==='ctl:'+v));applyCtl();}
-  else if(a==='snd'){mute=!mute;try{localStorage.setItem('bb_mute',mute?'1':'0');}catch(e){}$('sn').textContent=mute?'🔇':'🔊';}
-  else if(a==='lobby'){netClose();if(mode==='online')mode='bot';reset();menu.classList.remove('hidden');}
+  else if(a==='snd'){mute=!mute;ST.set('bb_mute',mute?'1':'0');document.querySelectorAll('.snb').forEach(x=>x.textContent=mute?'🔇':'🔊');}
+  else if(a==='lobby'){netClose();if(mode==='online')mode='bot';reset();openMenu();}
 });
-// Mobile wall placement: pick Horizontal/Vertical, then hold & drag on the board and release to place
-board.addEventListener('pointerdown',e=>{if(isMob()&&human()&&wl[turn]>0)drag={x:e.clientX,y:e.clientY,on:false,slot:null};});
-board.addEventListener('pointermove',e=>{
-  if(!drag)return;
-  if(!drag.on&&Math.hypot(e.clientX-drag.x,e.clientY-drag.y)<8)return;
-  drag.on=true;showPv(e);
-});
-const endDrag=e=>{
-  const d=drag;drag=null;if(!d)return;
+
+const syncOri=()=>{$('oh').classList.toggle('on',ori==='h');$('ov').classList.toggle('on',ori==='v');};
+
+/* Drag-to-place-wall (mobile). IMPORTANT: a plain tap/click must stay a normal click.
+   - We never capture the pointer on pointerdown (capturing retargets the later "click" to the
+     board, so tile/slot data-do clicks were silently lost -> boxes didn't move).
+   - A gesture only becomes a drag after the pointer moves past a slop distance; until then
+     the browser's normal click goes through to the tile/slot. */
+const slopOf=t=>t==='touch'||t==='pen'?14:8;
+function dStart(x,y,id,oOverride){
+  if(!human()||wl[turn]<1)return;
+  if(oOverride){ori=oOverride;syncOri();}
+  drag={x,y,on:false,btn:!!oOverride,slot:null,id,cap:null,cancel:false};
+}
+function dMove(x,y,type){
+  if(!drag)return false;
+  const dx=x-drag.x,dy=y-drag.y,ax=Math.abs(dx),ay=Math.abs(dy);
+  if(!drag.on){
+    if(Math.hypot(dx,dy)<slopOf(type))return false;
+    drag.on=true;
+    if(!drag.btn){
+      if(ax>ay*1.2)ori='h';else if(ay>ax*1.2)ori='v';
+      syncOri();
+    }
+    /* Capture only now that it's a real drag, so board re-renders can't orphan the gesture. */
+    try{board.setPointerCapture(drag.id);drag.cap=board;}catch(e){}
+  }
+  const z=$('cz');z.classList.add('on');
+  const zr=z.getBoundingClientRect(),hot=x>=zr.left&&x<=zr.right&&y>=zr.top-30&&y<=zr.bottom+30;
+  z.classList.toggle('hot',hot);drag.cancel=hot;
+  if(hot){drag.slot=null;board.querySelector('.pv')?.remove();}
+  else showPv({clientX:x,clientY:y,pointerType:type});
+  return true;
+}
+function dEnd(ok,id){
+  if(!drag||(id!==undefined&&drag.id!==id))return false;
+  const d=drag;drag=null;
+  try{if(d.cap&&d.cap.hasPointerCapture(id))d.cap.releasePointerCapture(id);}catch(e){}
   board.querySelector('.pv')?.remove();
-  if(!d.on)return;
-  skipUntil=Date.now()+80;
-  if(e.type!=='pointerup')return;
-  if(d.slot)wall(ori,d.slot.r,d.slot.c);else{sfx.bad();flash('Can’t place a wall there');}
-};
-['pointerup','pointercancel','pointerleave'].forEach(t=>board.addEventListener(t,endDrag));
-// ---- Online play: PeerJS peer-to-peer, no backend. Everything is wrapped so bot/local modes never depend on it ----
+  $('cz').classList.remove('on','hot');
+  if(!d.on)return false;            /* never dragged -> it was a tap/click, let click handler run */
+  skipUntil=Date.now()+300;         /* real drag -> swallow the synthetic click that follows */
+  if(ok&&d.cancel){sfx.ui();flash('Wall cancelled');return true;}
+  if(ok){if(d.slot)wall(ori,d.slot.r,d.slot.c);else{sfx.bad();flash('Can’t place a wall there');}}
+  return true;
+}
+
+board.addEventListener('pointerdown',e=>{
+  if(e.button>0)return;
+  /* With a mouse on PC controls, walls are placed by clicking the slots; no drag needed. */
+  if(e.pointerType==='mouse'&&!document.body.classList.contains('mob'))return;
+  dStart(e.clientX,e.clientY,e.pointerId);
+});
+$('oh').addEventListener('pointerdown',e=>{
+  if(e.button>0)return;
+  dStart(e.clientX,e.clientY,e.pointerId,'h');
+});
+$('ov').addEventListener('pointerdown',e=>{
+  if(e.button>0)return;
+  dStart(e.clientX,e.clientY,e.pointerId,'v');
+});
+
+window.addEventListener('pointermove',e=>{if(drag&&drag.id===e.pointerId)dMove(e.clientX,e.clientY,e.pointerType);});
+window.addEventListener('pointerup',e=>{if(drag&&drag.id===e.pointerId)dEnd(true,e.pointerId);});
+window.addEventListener('pointercancel',e=>{if(drag&&drag.id===e.pointerId)dEnd(false,e.pointerId);});
+
+board.addEventListener('contextmenu',e=>e.preventDefault());
+
 const ALPHA='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',PFX='bbox2-',QN=4,rnd=n=>Math.floor(Math.random()*n),
   soft=e=>!!e&&['peer-unavailable','dial-timeout','unavailable-id','webrtc','negotiation-failed','connection-failed','server-error','socket-error','timeout','network'].includes(e.type),
   msg=e=>{
@@ -423,7 +619,6 @@ function mkPeer(id,tok,ok,err){
   };
   const to=setTimeout(()=>{try{p&&p.destroy();}catch(e){}fin(err,{type:'timeout'});},15000);
   try{
-    // Use PeerJS's public cloud broker explicitly over HTTPS/WSS.
     p=new Peer(id||undefined,{host:'0.peerjs.com',port:443,path:'/',secure:true,debug:0});
     p.on('open',()=>fin(ok,p));
     p.on('error',e=>{if(!done){try{p.destroy();}catch(x){}fin(err,e||{type:'server-error'});}});
@@ -443,12 +638,20 @@ function dial(id,tok,ok,err){
     catch(e){fin(err,e);}
   },err);
 }
-// Host (role 1 = blue, moves first) tells the guest 'go'; guest (role 2 = red) starts when it hears it
 function link(p,c,role,lost){
   const tk=netTok;let on=role===1,dead=false;
   const lose=()=>{if(dead)return;dead=true;clearTimeout(nTimer);on?onClose():lost&&lost();};
   peer=p;conn=c;
-  c.on('data',d=>{if(tk!==netTok)return;if(!on&&d&&d.k==='go'){on=true;clearTimeout(nTimer);startOnline(2);}else if(on)onData(d);});
+  let lastRx=Date.now(),lastTick=Date.now();
+  const hb=setInterval(()=>{
+    if(tk!==netTok||dead){clearInterval(hb);return;}
+    const now=Date.now();
+    if(now-lastTick>4000)lastRx=now;   /* this tab was frozen/backgrounded: don't blame the opponent */
+    lastTick=now;
+    try{if(c.open)c.send({k:'p'});}catch(e){}
+    if(on&&now-lastRx>9000){clearInterval(hb);lose();}
+  },2000);
+  c.on('data',d=>{if(tk!==netTok)return;lastRx=Date.now();if(d&&d.k==='p')return;if(!on&&d&&d.k==='go'){on=true;clearTimeout(nTimer);startOnline(2);}else if(on)onData(d);});
   c.on('close',()=>{if(tk===netTok)lose();});
   p.on('error',()=>{});p.on('disconnected',()=>{try{p.reconnect();}catch(e){}});
   if(role===1){net({k:'go'});startOnline(1);}
@@ -465,11 +668,16 @@ function onData(d){
   try{
     if(d.k==='m'&&turn!==myP)move(d.r,d.c);
     else if(d.k==='w'&&turn!==myP)wall(d.t,d.r,d.c);
-    else if(d.k==='r')end(myP,'Your opponent resigned.');
+    else if(d.k==='r')end(myP,'Opponent resigned. You win!');
+    else if(d.k==='bye')end(myP,'Opponent disconnected. You win!');
+    else if(d.k==='t'&&turn!==myP)end(myP,'Your opponent ran out of time.');
+    else if(d.k==='b'&&xw[3-myP]<2){xw[3-myP]++;wl[3-myP]++;render();}
   }catch(e){}finally{rx=false;}
 }
-function onClose(){if(mode==='online'&&!over)end(myP,'Your opponent disconnected.');}
-// Quick Match: fixed public slot IDs act as the pool. Try to join a waiting slot; otherwise wait in one, then rescan.
+window.addEventListener('pagehide',()=>{
+  if(mode==='online'&&!over){try{if(conn&&conn.open)conn.send({k:'bye'});}catch(e){}try{conn&&conn.close();}catch(e){}}
+});
+function onClose(){if(mode==='online'&&!over)end(myP,'Opponent disconnected. You win!');}
 function quick(){
   const tok=++netTok,order=[...Array(QN).keys()].sort(()=>Math.random()-.5);let i=0;
   netUI('Quick Match','Searching for an opponent…');
@@ -494,7 +702,6 @@ function create(attempt=0){
     p.on('connection',c=>c.on('open',()=>{if(conn||tok!==netTok){c.close();return;}link(p,c,1);}));
     p.on('error',e=>{if(tok===netTok&&!conn)netFail(msg(e));});
   },e=>{
-    // Retry transient broker failures with a new room ID; never recurse forever.
     if(tok===netTok&&attempt<2&&e&&['unavailable-id','timeout','server-error','socket-error','network','disconnected'].includes(e.type)){
       netUI('Retrying room creation',`PeerJS connection attempt ${attempt+2} of 3…`);
       setTimeout(()=>{if(tok===netTok)create(attempt+1);},700*(attempt+1));
@@ -509,15 +716,121 @@ function join(code){
 }
 function onl(v){
   try{
-    if(v==='quick'){netClose();quick();}
-    else if(v==='create'){netClose();create();}
-    else if(v==='join'){netClose();netUI('Join Room','Enter the 4-character room code.','',true);setTimeout(()=>$('ni').focus(),50);}
+    if(v==='quick'){isQ=true;netClose();quick();}
+    else if(v==='create'){isQ=false;netClose();create();}
+    else if(v==='join'){isQ=false;netClose();netUI('Join Room','Enter the 4-character room code.','',true);setTimeout(()=>$('ni').focus(),50);}
     else if(v==='go')join($('ni').value);
-    else if(v==='cancel'){netClose();$('net').classList.add('hidden');if(mode==='online'){mode='bot';reset();}menu.classList.remove('hidden');}
+    else if(v==='cancel'){netClose();$('net').classList.add('hidden');if(mode==='online'){mode='bot';reset();}openMenu();}
   }catch(e){netFail(msg(e));}
 }
 $('ni').addEventListener('keydown',e=>{if(e.key==='Enter')join($('ni').value);});
-setDiff('medium');reset();applyCtl();$('sn').textContent=mute?'🔇':'🔊';
+/* ---------- Rewarded ads (CrazyGames SDK v3) ---------- */
+const onCG=/crazygames/i.test(location.hostname)||/crazygames/i.test(document.referrer||'');
+let toastT;
+function toast(m){const e=$('toast');e.textContent=m;e.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>e.classList.remove('on'),2800);}
+/* adStarted -> freeze the game (clock, bot, input) and mute every sound. */
+function adPause(){
+  adPlaying=true;adMute=true;
+  try{if(ac&&ac.state==='running')ac.suspend();}catch(e){}
+  syncGP();
+}
+/* adFinished / adError -> unmute and unfreeze. */
+function adResume(){
+  adPlaying=false;adMute=false;lastT=Date.now();
+  try{if(ac&&ac.state==='suspended'&&!mute)ac.resume();}catch(e){}
+  syncGP();render();
+}
+/* Local/test ad, used only when the game is NOT running on CrazyGames (localhost, own site, file://). */
+function devAd(onReward){
+  const o=$('adv'),b=$('ads');let n=5;
+  adBusy=true;adPause();
+  o.classList.remove('hidden');b.disabled=true;b.textContent='Reward in 5s…';
+  const t=setInterval(()=>{n--;if(n>0){b.textContent=`Reward in ${n}s…`;return;}clearInterval(t);b.textContent='Claim reward';b.disabled=false;
+    b.onclick=()=>{b.onclick=null;o.classList.add('hidden');adBusy=false;adResume();onReward();};},1000);
+}
+function showAd(onReward){
+  const s=CG.sdk;
+  if(CG.adsLive&&s&&s.ad){
+    let settled=false;adBusy=true;
+    const finish=(rewarded,err)=>{
+      if(settled)return;settled=true;adBusy=false;
+      adResume();                                  /* always resume first, whatever the outcome */
+      if(rewarded)onReward();                      /* adFinished -> grant the reward */
+      else{sfx.bad();toast(err&&err.code==='unfilled'?'No ad available right now. Please try again in a moment.':'The ad couldn’t be shown. Please try again.');}
+    };
+    try{
+      const r=s.ad.requestAd('rewarded',{
+        adStarted:()=>adPause(),
+        adFinished:()=>finish(true),
+        adError:e=>finish(false,e)
+      });
+      if(r&&typeof r.catch==='function')r.catch(e=>finish(false,e));
+    }catch(e){finish(false,e);}
+    return;
+  }
+  if(onCG){toast('Ads are unavailable right now. Please turn off your ad blocker and reload.');return;}   /* SDK blocked on CrazyGames: no free reward */
+  devAd(onReward);
+}
+function watchAd(k){
+  if(adBusy||adPlaying)return;
+  if(mode==='online'&&!over)return;   /* never interrupt an online match with an ad */
+  if(k==='lobby'&&adsUsed>=20)return;if(k==='post'&&adDone)return;
+  showAd(()=>{
+    if(k==='lobby'){if(adsUsed>=20)return;adsUsed++;total+=5;toast('+5 💎 added!');}
+    else{if(adDone)return;adDone=true;total+=15;$('pa').classList.add('hidden');toast('+15 💎 added!');}
+    save();sfx.gem();render();
+  });
+}
+/* Midgame (interstitial) ad: only BETWEEN matches, only after the first finished match, only on CrazyGames.
+   The SDK enforces its own cooldown; if no ad is available we simply carry on. */
+function midAd(next){
+  if(adBusy||adPlaying)return;
+  const s=CG.sdk;
+  if(gamesDone<1||!CG.adsLive||!s||!s.ad){next();return;}
+  let settled=false;adBusy=true;
+  const fin=()=>{if(settled)return;settled=true;clearTimeout(wd);adBusy=false;adResume();next();},wd=setTimeout(fin,120000);
+  try{
+    const r=s.ad.requestAd('midgame',{adStarted:()=>adPause(),adFinished:fin,adError:fin});
+    if(r&&typeof r.catch==='function')r.catch(fin);
+  }catch(e){fin();}
+}
+function buy(){
+  if(mode!=='online'||!isQ||over||xw[myP]>=2||total<30)return;
+  total-=30;xw[myP]++;wl[myP]++;save();net({k:'b'});sfx.gem();render();
+}
+const LB_API='';
+let pid='',pname='';
+const DEMO=(()=>{let x=1234567;const R=()=>(x=(x*1664525+1013904223)>>>0)/4294967296,N=['Nova','Rex','Viper','Echo','Blaze','Ghost','Titan','Rogue','Pixel','Storm','Zen','Orbit'];
+  return Array.from({length:400},(_,i)=>({n:N[i%12]+Math.floor(R()*99),p:Math.round(3200*Math.pow(1-i/400,2)+25)}));})();
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function lbSubmit(){if(LB_API)fetch(LB_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:pid,name:pname,points})}).catch(()=>{});}
+async function lbLoad(){
+  if(!LB_API)return;   /* no demo data: the leaderboard stays hidden until a real server URL is set */
+  let top,rank;
+  try{
+    if(LB_API){const r=await(await fetch(LB_API+'?id='+encodeURIComponent(pid))).json();top=r.top.slice(0,100);rank=r.rank;}
+    else{const all=[...DEMO,{n:pname,p:points,me:1}].sort((a,b)=>b.p-a.p||(a.me?1:b.me?-1:0));rank=all.findIndex(x=>x.me)+1;top=all.slice(0,100);}
+  }catch(e){$('lbl').innerHTML='<div class="lr"><i></i><span>Leaderboard unavailable</span></div>';return;}
+  $('lbn').textContent=LB_API?'LIVE':'DEMO DATA';
+  $('lbl').innerHTML=top.map((x,i)=>`<div class="lr${x.me?' me':''}"><i>${['🥇','🥈','🥉'][i]||'#'+(i+1)}</i><span>${esc(x.n)}</span><b>${x.p} PTS</b></div>`).join('');
+  $('lbme').innerHTML=`<span>You: ${esc(pname)}</span><span>Your Rank: #${rank}</span><span>${points} PTS</span>`;$('hr').textContent='#'+rank;$('hs2').textContent=rank<=100?'Top 100 Worldwide Player!':'Reach the Top 100!';
+}
+function openMenu(){menu.classList.remove('hidden');render();lbLoad();}
+$('pn').addEventListener('change',()=>{pname=($('pn').value.trim()||pname).slice(0,14);$('pn').value=pname;ST.set('bb_name',pname);lbSubmit();lbLoad();});
+/* Startup: init SDK -> loadingStart -> build the game -> wait for fonts -> loadingStop. */
+(async function boot(){
+  await CG.init();                 /* never throws; resolves false if SDK missing/blocked/disabled */
+  CG.loadingStart();
+  try{
+    loadSaved();applyFeatures();
+    setDiff('medium');reset();applyCtl();lbLoad();document.querySelectorAll('.snb').forEach(x=>x.textContent=mute?'🔇':'🔊');
+    booted=true;                   /* game is interactive as soon as it is built */
+    if(document.fonts&&document.fonts.ready)await Promise.race([document.fonts.ready,new Promise(r=>setTimeout(r,2500))]);
+  }finally{
+    booted=true;
+    CG.loadingStop();              /* everything (game + fonts) finished loading */
+  }
+})();
 </script>
 </body>
 </html>
