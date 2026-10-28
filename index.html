@@ -188,8 +188,8 @@ body.nolb .lg{grid-template-columns:1fr}
       <div class="mc bot"><div class="row2"><span class="ic r">🤖</span><div><b>VS Computer (AI Bot)</b><small>Practice offline against AI with variable difficulty.</small></div></div>
         <div class="dif"><button class="btn" data-do="bot:easy">Easy (+1 PT)</button><button class="btn" data-do="bot:medium">Medium (+10)</button><button class="btn" data-do="bot:hard">Hard (+30)</button></div></div>
       <div class="g2c">
-        <div class="mc onl"><span class="ic r">🔑</span><div><b>Private Room</b><small>Create or join a code room</small><div class="mini"><button class="btn" data-do="online:create">Create</button><button class="btn" data-do="online:join">Join</button></div></div></div>
-        <button class="mc" data-do="start:local"><span class="ic">👥</span><div><b>Pass &amp; Play (1v1)</b><small>Local match on 1 device (+5 PTS)</small></div></button>
+        <div class="mc onl"><span class="ic r">🔑</span><div><b>Private Room</b><small>Create or join a code room (+1 PT per win)</small><div class="mini"><button class="btn" data-do="online:create">Create</button><button class="btn" data-do="online:join">Join</button></div></div></div>
+        <button class="mc" data-do="start:local"><span class="ic">👥</span><div><b>Pass &amp; Play (1v1)</b><small>Local match on 1 device (+1 PT)</small></div></button>
       </div>
     </div>
     <section class="lbx">
@@ -404,7 +404,8 @@ function end(w,why){
   let pts=0;const gx=q?gm[myP]:0;
   if(q)pts=win?30:-10;
   else if(mode==='bot'&&win)pts={easy:1,medium:10,hard:30}[diff];
-  else if(loc&&!resigned)pts=5;
+  else if(loc&&!resigned)pts=1;
+  else if(on&&win)pts=1;   /* private room: +1 for a win */
   const old=points;points=Math.max(0,points+pts);save();   /* gems were already credited live when collected */lbSubmit();render();win?sfx.win():sfx.lose();if(win)CG.happy();
   const dp=points-old,parts=[];
   if(q||pts)parts.push(`${dp>0?'+':''}${dp} pts`);
@@ -798,7 +799,7 @@ function buy(){
   if(mode!=='online'||!isQ||over||xw[myP]>=2||total<30)return;
   total-=30;xw[myP]++;wl[myP]++;save();net({k:'b'});sfx.gem();render();
 }
-const LB_API='';
+const LB_API='https://blockade-box-server.onrender.com/api/leaderboard';
 let pid='',pname='';
 const DEMO=(()=>{let x=1234567;const R=()=>(x=(x*1664525+1013904223)>>>0)/4294967296,N=['Nova','Rex','Viper','Echo','Blaze','Ghost','Titan','Rogue','Pixel','Storm','Zen','Orbit'];
   return Array.from({length:400},(_,i)=>({n:N[i%12]+Math.floor(R()*99),p:Math.round(3200*Math.pow(1-i/400,2)+25)}));})();
