@@ -32,7 +32,7 @@ body{margin:0;background:var(--bg);color:var(--tx);min-height:100vh;display:flex
 .g1{background:linear-gradient(rgba(59,130,246,.3),rgba(59,130,246,.3)),var(--tile);box-shadow:inset 0 0 0 1px rgba(59,130,246,.25)} 
 .g2{background:linear-gradient(rgba(239,68,68,.3),rgba(239,68,68,.3)),var(--tile);box-shadow:inset 0 0 0 1px rgba(239,68,68,.25)} 
 .board{position:relative;--pd:16px;--gl:8px}
-body.mob .board{--pd:10px;--gl:6px}
+body.mob .board{--pd:8px;--gl:6px}
 .board::before,.board::after{content:"";position:absolute;left:var(--pd);right:var(--pd);height:var(--gl);border-radius:0;pointer-events:none;
 background:repeating-linear-gradient(90deg,var(--ca) 0 calc(100%/120),var(--cb) 0 calc(100%/60)) top/100% 50% no-repeat,repeating-linear-gradient(90deg,var(--cb) 0 calc(100%/120),var(--ca) 0 calc(100%/60)) bottom/100% 50% no-repeat}
 .board::before{--ca:#fca5a5;--cb:#dc2626;top:calc(var(--pd) - var(--gl) - 3px);box-shadow:0 0 10px var(--p2g)} 
@@ -76,9 +76,13 @@ small{color:var(--mut);font-size:11px;font-weight:600}
 .app{max-width:1500px}
 body.pc .board{--g:14px;width:max(360px,min(84vh,calc(100vw - 440px),880px))}
 body.pc .side{width:320px}
-body.mob .app{padding:8px;gap:12px}
-body.mob .panel{padding:10px;border-radius:18px}
-body.mob .board{--g:8px;padding:10px;width:min(94vw,520px)}
+body.mob{align-items:flex-start}
+body.mob .app{padding:6px;gap:10px;width:100%;max-width:100%}
+body.mob .panel{padding:6px;border-radius:16px;width:100%}
+body.mob .board{--g:8px;padding:8px;width:min(calc(100vw - 28px),calc((100svh - 190px)/1.3));min-width:min(calc(100vw - 28px),300px);max-width:820px;aspect-ratio:1/1.3;margin:0 auto}
+body.mob .pawn{width:72%;height:auto;aspect-ratio:1/1}
+body.mob .side{width:100%;max-width:100%}
+body.mob .ori{width:calc(100vw - 28px);max-width:820px;margin-left:auto;margin-right:auto}
 .mobonly{display:none}
 body.mob .mobonly{display:grid}
 .ori{margin-top:12px;grid-template-columns:1fr 1fr;gap:10px}
@@ -408,9 +412,10 @@ const flip=()=>mode==='online'&&myP===2;
 const area=(t,r,c)=>{if(flip()){r=7-r;c=7-c;}return t==='h'?`${2*r+2}/${2*c+1}/${2*r+3}/${2*c+4}`:`${2*r+1}/${2*c+2}/${2*r+4}/${2*c+3}`;};
 function slotAt(e){
   const R=board.getBoundingClientRect(),cs=getComputedStyle(board),g=parseFloat(cs.getPropertyValue('--g')),
-    pd=parseFloat(cs.paddingLeft)+parseFloat(cs.borderLeftWidth),sp=(R.width-2*pd-8*g)/9+g,
-    off=e.pointerType==='touch'?sp*.9:0,f=v=>Math.max(0,Math.min(7,Math.round((v+g/2)/sp)-1));
-  const r=f(e.clientY-R.top-pd-off),c=f(e.clientX-R.left-pd);return flip()?{r:7-r,c:7-c}:{r,c};
+    pd=parseFloat(cs.paddingLeft)+parseFloat(cs.borderLeftWidth),
+    spx=(R.width-2*pd-8*g)/9+g,spy=(R.height-2*pd-8*g)/9+g,
+    off=e.pointerType==='touch'?spy*.9:0,f=(v,sp)=>Math.max(0,Math.min(7,Math.round((v+g/2)/sp)-1));
+  const r=f(e.clientY-R.top-pd-off,spy),c=f(e.clientX-R.left-pd,spx);return flip()?{r:7-r,c:7-c}:{r,c};
 }
 function showPv(e){
   const{r,c}=slotAt(e),ok=!!wallOk(ori,r,c);
@@ -562,7 +567,7 @@ function render(){
   for(const t of'hv')for(let r=0;r<8;r++)for(let c=0;c<8;c++){
     const o=W[t][r][c],a=area(t,r,c);
     if(o)h+=`<div class="w w${o}" style="grid-area:${a}"></div>`;
-    else if(can)h+=`<div class="s" style="grid-area:${a}" data-do="${t}:${r},${c}"></div>`;
+    else if(can&&!document.body.classList.contains('mob'))h+=`<div class="s" style="grid-area:${a}" data-do="${t}:${r},${c}"></div>`;
   }
   board.className='board p'+turn+(flip()?' fl':'');board.innerHTML=h;
   for(const p of[1,2]){
@@ -588,7 +593,7 @@ document.addEventListener('click',e=>{
   const[a,v='']=b.dataset.do.split(':'),[r,c]=v.split(',').map(Number);
   if('mhv'.indexOf(a)<0)sfx.ui();
   if(a==='m'){if(human())move(r,c);}
-  else if(a==='h'||a==='v'){if(human())wall(a,r,c);}
+  else if(a==='h'||a==='v'){if(human()&&!document.body.classList.contains('mob'))wall(a,r,c);}
   else if(a==='diff')setDiff(v);
   else if(a==='start')midAd(()=>start(v));
   else if(a==='menu'){if(mode==='online'&&!over)flash('Use Resign to leave an online match');else openMenu();}
@@ -614,7 +619,7 @@ const syncOri=()=>{$('oh').classList.toggle('on',ori==='h');$('ov').classList.to
      board, so tile/slot data-do clicks were silently lost -> boxes didn't move).
    - A gesture only becomes a drag after the pointer moves past a slop distance; until then
      the browser's normal click goes through to the tile/slot. */
-const slopOf=t=>t==='touch'||t==='pen'?14:8;
+const slopOf=t=>t==='touch'||t==='pen'?18:8;
 function dStart(x,y,id,oOverride){
   if(!human()||wl[turn]<1)return;
   if(oOverride){ori=oOverride;syncOri();}
