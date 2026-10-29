@@ -115,9 +115,12 @@ const app = express();
 app.set('trust proxy', 1);
 const server = http.createServer(app);
 
-// ⚠️ THE FIX: 'path' must NOT have a leading slash, and we mount directly.
+// PeerJS route must match the client config in index.html: path: '/peerjs'.
+// Mounting the middleware at '/peerjs' with its internal path '/' exposes
+// the signaling endpoint at /peerjs and avoids accidentally creating a
+// doubled or mismatched route.
 const peerServer = ExpressPeerServer(server, {
-  path: 'peerjs', // <-- No leading slash
+  path: '/',
   proxied: true,
   allow_discovery: false,
   debug: true
@@ -126,7 +129,7 @@ const peerServer = ExpressPeerServer(server, {
 peerServer.on('connection', client => console.log(`[peer] ✅ connected: ${client.getId()}`));
 peerServer.on('disconnect', client => console.log(`[peer] ❌ disconnected: ${client.getId()}`));
 
-app.use(peerServer); // <-- Direct mount
+app.use('/peerjs', peerServer);
 
 app.get('/health', (_req,res) => res.json({ ok:true, uptime:process.uptime() }));
 app.use(handler);
