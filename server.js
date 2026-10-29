@@ -1,10 +1,13 @@
-/* Blockade Box leaderboard server (no framework, only `pg` when DATABASE_URL is set).
+/* Blockade Box server: leaderboard API + PeerJS signaling (one service).
    GET  /api/leaderboard?id=PLAYER_ID  -> { top:[{n,p,me}], rank }
    POST /api/leaderboard  {id,name,points} -> { ok:true, rank }
-   GET  /                                   -> "ok" (health check / keep-alive ping)            */
+   GET  /                                   -> "ok" (health check / keep-alive ping)
+   /peerjs                                  -> PeerJS signaling server (online rooms + quick match)   */
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const express = require('express');
+const { ExpressPeerServer } = require('peer');
 
 const PORT = process.env.PORT || 3000;
 const ORIGIN = process.env.ALLOWED_ORIGIN || '*';      /* e.g. https://www.crazygames.com (or keep * while testing) */
@@ -61,8 +64,8 @@ const readBody = req => new Promise((ok, no) => {
 });
 const validId = id => typeof id === 'string' && /^[A-Za-z0-9_-]{4,40}$/.test(id);
 
-/* ---------- server ---------- */
-http.createServer(async (req, res) => {
+/* ---------- leaderboard + static handler (unchanged logic) ---------- */
+const handler = async (req, res) => {
   try {
     if (req.method === 'OPTIONS') return send(res, 204, '');
     const u = new URL(req.url, 'http://x');
@@ -109,4 +112,14 @@ http.createServer(async (req, res) => {
     }
     send(res, 405, { error: 'method' });
   } catch (e) { console.error(e); send(res, 500, { error: 'server' }); }
-}).listen(PORT, () => console.log('Leaderboard server on :' + PORT));
+};
+
+/* ---------- start: PeerJS signaling on /peerjs, everything else -> handler ---------- */
+const app = express();
+app.set('trust proxy', 1);
+const server = http.createServer(app);
+app.use('/peerjs', ExpressPeerServer(server, {
+  path: '/', proxied: true, allow_discovery: false, corsOptions: { origin: true }
+}));
+app.use(handler);
+server.listen(PORT, () => console.log('Server on :' + PORT));
