@@ -679,6 +679,10 @@ window.addEventListener('pointercancel',e=>{if(drag&&drag.id===e.pointerId)dEnd(
 
 board.addEventListener('contextmenu',e=>e.preventDefault());
 
+/* Signaling server for PeerJS. Default = free public cloud (often slow/overloaded).
+   To use your own PeerServer, change host/port/path/secure here (e.g. host:'blockade-box-server.onrender.com',port:443,path:'/peerjs',secure:true).
+   Do NOT add a 'config' key unless you also include STUN + TURN servers: it replaces PeerJS's built-in TURN fallback. */
+const NET={host:'blockade-box-server.onrender.com',port:443,path:'/peerjs',secure:true};
 const ALPHA='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',PFX='bbox2-',QN=4,rnd=n=>Math.floor(Math.random()*n),
   soft=e=>!!e&&['peer-unavailable','dial-timeout','unavailable-id','webrtc','negotiation-failed','connection-failed','server-error','socket-error','timeout','network'].includes(e.type),
   msg=e=>{
@@ -686,7 +690,7 @@ const ALPHA='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',PFX='bbox2-',QN=4,rnd=n=>Math.flo
     if(e&&e.type==='nolib')return 'PeerJS could not load. Check your internet connection or allow cdn.jsdelivr.net.';
     if(e&&e.type==='unavailable-id')return 'That room code is already in use. Generating a fresh code…';
     if(e&&e.type==='timeout')return 'The public PeerJS signaling server did not respond in time. Check your connection, VPN/firewall, or try again shortly. Bot and local play still work.';
-    return 'Could not connect to the public PeerJS signaling server (0.peerjs.com:443). It may be blocked by your network, browser, VPN, or firewall. Bot and local 2-player modes still work.';
+    return 'Could not connect to the signaling server ('+NET.host+'). It may be down, or blocked by your network, VPN, or firewall. Bot and local 2-player modes still work. [error: '+((e&&e.type)||'unknown')+']';
   };
 function netUI(t,m,code,join){
   $('ncp').classList.add('hidden');
@@ -705,9 +709,9 @@ function mkPeer(id,tok,ok,err){
     if(tok!==netTok){try{p&&p.destroy();}catch(e){}return;}
     f(a);
   };
-  const to=setTimeout(()=>{try{p&&p.destroy();}catch(e){}fin(err,{type:'timeout'});},15000);
+  const to=setTimeout(()=>{try{p&&p.destroy();}catch(e){}fin(err,{type:'timeout'});},30000);
   try{
-    p=new Peer(id||undefined,{host:'0.peerjs.com',port:443,path:'/',secure:true,debug:0});
+    p=new Peer(id||undefined,Object.assign({debug:0},NET));
     p.on('open',()=>fin(ok,p));
     p.on('error',e=>{if(!done){try{p.destroy();}catch(x){}fin(err,e||{type:'server-error'});}});
     p.on('disconnected',()=>{if(!done){try{p.reconnect();}catch(e){}}});
