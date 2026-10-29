@@ -158,12 +158,13 @@ const app    = express();
 app.set('trust proxy', 1);
 const server = http.createServer(app);
 
-/* PeerJS signaling.
-   ⚠️ VERY IMPORTANT:
-   - Do NOT set `path` inside ExpressPeerServer. Default '/' is correct when mounted at '/peerjs'.
-   - Client side MUST use: path: '/peerjs' (already in your index.html NET object).
-   - `proxied: true` is required behind Render's reverse proxy. */
+/* 
+  ⚠️ FIXED PEERJS ROUTING:
+  - Do NOT use app.use('/peerjs', peerServer) with PeerJS 1.0.2 on Express 4.
+  - Use path: '/peerjs' inside the config and mount it directly.
+*/
 const peerServer = ExpressPeerServer(server, {
+  path: '/peerjs',
   proxied: true,
   allow_discovery: false,
   debug: process.env.PEER_DEBUG === '1',
@@ -173,9 +174,9 @@ const peerServer = ExpressPeerServer(server, {
 peerServer.on('connection', client => console.log(`[peer] ✅ connected: ${client.getId()}`));
 peerServer.on('disconnect', client => console.log(`[peer] ❌ disconnected: ${client.getId()}`));
 
-app.use('/peerjs', peerServer);
+app.use(peerServer); // Mount directly!
 
-/* Keep-alive / health check for Render free tier (point UptimeRobot here every 10 min) */
+/* Keep-alive / health check for Render free tier */
 app.get('/health', (_req,res) => res.json({ ok:true, ts:Date.now(), peer:'/peerjs', uptime:process.uptime() }));
 
 /* Leaderboard + static files (must be registered last) */
@@ -185,7 +186,7 @@ app.use(handler);
 server.listen(PORT, () => {
   console.log('');
   console.log(`🚀 Blockade Box server listening on port ${PORT}`);
-  console.log(`   PeerJS signaling : /peerjs   (client uses path:'/peerjs')`);
+  console.log(`   PeerJS signaling : /peerjs`);
   console.log(`   Leaderboard API  : /api/leaderboard`);
   console.log(`   Health check     : /health`);
   console.log('');
