@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Blockade Box</title>
 <script src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.5/dist/socket.io.min.js"></script>
 <style>
 /* Self-hosted fonts: drop the two .woff2 files into /fonts (see README). Missing files just fall back to the system font. */
 @font-face{font-family:Inter;font-style:normal;font-weight:100 900;font-display:swap;src:local('Inter')}
@@ -233,7 +233,7 @@ body.nolb .lg{grid-template-columns:1fr}
 const $=i=>document.getElementById(i),D=[[1,0],[-1,0],[0,1],[0,-1]],goal={1:0,2:8};
 const board=$('board'),st=$('st'),menu=$('menu'),modal=$('modal');
 const ONLINE=true;   /* online modes + gems/ads; set false to hide them */
-let W,pos,wl,gems,gm,turn,over,mode='bot',diff='medium',total=0,gen=0,ft,ctl='auto',ori='h',drag=null,skipUntil=0,ac,mute=false,tm,bs=1,bp={lane:4,lust:1,o:'h'},lastT=0,peer=null,conn=null,myP=1,netTok=0,nTimer=null,rx=false,points=0,isQ=false,xw={1:0,2:0},resigned=false,adsUsed=0,adDone=false,adPlaying=false,adBusy=false,adMute=false,booted=false,gamesDone=0;
+let W,pos,wl,gems,gm,turn,over,mode='bot',diff='medium',total=0,gen=0,ft,ctl='auto',ori='h',drag=null,skipUntil=0,ac,mute=false,tm,bs=1,bp={lane:4,lust:1,o:'h'},lastT=0,sock=null,conn=false,myP=1,netTok=0,nTimer=null,rx=false,points=0,isQ=false,xw={1:0,2:0},resigned=false,adsUsed=0,adDone=false,adPlaying=false,adBusy=false,adMute=false,booted=false,gamesDone=0;
 const fmt=ms=>{const s=Math.ceil(Math.max(0,ms)/1000);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
 
 /* ---------- CrazyGames SDK v3 wrapper ----------
@@ -599,7 +599,7 @@ document.addEventListener('click',e=>{
   else if(a==='menu'){if(mode==='online'&&!over)flash('Use Resign to leave an online match');else openMenu();}
   else if(a==='online')onl(v);
   else if(a==='reset'||a==='again'){
-    if(mode==='online'){if(a==='again'){if(!isQ&&over&&conn&&conn.open){rematch();return;}netClose();mode='bot';modal.classList.add('hidden');reset();openMenu();}else flash('Restart isn’t available online');}
+    if(mode==='online'){if(a==='again'){if(!isQ&&over&&conn){rematch();return;}netClose();mode='bot';modal.classList.add('hidden');reset();openMenu();}else flash('Restart isn’t available online');}
     else if(a==='again')midAd(reset);else reset();
   }
   else if(a==='resign')resign();
@@ -679,75 +679,50 @@ window.addEventListener('pointercancel',e=>{if(drag&&drag.id===e.pointerId)dEnd(
 
 board.addEventListener('contextmenu',e=>e.preventDefault());
 
-/* Signaling server for PeerJS. Default = free public cloud (often slow/overloaded).
-   To use your own PeerServer, change host/port/path/secure here (e.g. host:'blockade-box-server.onrender.com',port:443,path:'/peerjs',secure:true).
-   Do NOT add a 'config' key unless you also include STUN + TURN servers: it replaces PeerJS's built-in TURN fallback. */
-const NET={host:'blockade-box-server.onrender.com',port:443,path:'/peerjs',secure:true};
-const ALPHA='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',PFX='bbox2-',QN=4,rnd=n=>Math.floor(Math.random()*n),
-  soft=e=>!!e&&['peer-unavailable','dial-timeout','unavailable-id','webrtc','negotiation-failed','connection-failed','server-error','socket-error','timeout','network'].includes(e.type),
+/* Online play: Socket.io through our own Render server (no PeerJS, no public signaling server).
+   The server only relays messages between the two players of a room. */
+const NET={url:'https://blockade-box-server.onrender.com'},
   msg=e=>{
-    if(e&&['peer-unavailable','dial-timeout'].includes(e.type))return 'Room not found or the host is offline. Check the code and try again.';
-    if(e&&e.type==='nolib')return 'PeerJS could not load. Check your internet connection or allow cdn.jsdelivr.net.';
-    if(e&&e.type==='unavailable-id')return 'That room code is already in use. Generating a fresh code…';
-    if(e&&e.type==='timeout')return 'The public PeerJS signaling server did not respond in time. Check your connection, VPN/firewall, or try again shortly. Bot and local play still work.';
-    return 'Could not connect to the signaling server ('+NET.host+'). It may be down, or blocked by your network, VPN, or firewall. Bot and local 2-player modes still work. [error: '+((e&&e.type)||'unknown')+']';
+    const t=e&&e.type;
+    if(t==='not-found')return 'Room not found. Check the code and try again.';
+    if(t==='full')return 'That room is already full.';
+    if(t==='nolib')return 'Online play could not load. Check your internet connection or allow cdn.jsdelivr.net.';
+    if(t==='timeout')return 'The game server did not respond in time. It may still be waking up, so please try again in a moment. Bot and local play still work.';
+    return 'Could not connect to the game server ('+NET.url.replace('https://','')+'). It may be down, or blocked by your network, VPN, or firewall. Bot and local 2-player modes still work.';
   };
 function netUI(t,m,code,join){
   $('ncp').classList.add('hidden');
   $('nt').textContent=t;$('nm').textContent=m;$('nc').textContent=code||'';
   $('ni').classList.toggle('hidden',!join);$('nj').classList.toggle('hidden',!join);$('net').classList.remove('hidden');
 }
-function drop(){clearTimeout(nTimer);try{conn&&conn.close();}catch(e){}try{peer&&peer.destroy();}catch(e){}conn=peer=null;}
+function drop(){
+  clearTimeout(nTimer);conn=false;
+  if(sock){const s=sock;sock=null;try{s.removeAllListeners();s.disconnect();}catch(e){}}
+}
 function netClose(){netTok++;drop();CGM.leave();}
-function net(d){try{if(conn&&conn.open)conn.send(d);}catch(e){flash('Connection problem');}}
+function net(d){try{if(sock&&conn)sock.emit('m',d);}catch(e){flash('Connection problem');}}
 function netFail(m){netClose();netUI('Online unavailable',m||msg());}
-function mkPeer(id,tok,ok,err){
-  if(typeof Peer==='undefined')return err({type:'nolib'});
-  let p,done=false;
-  const fin=(f,a)=>{
-    if(done)return;done=true;clearTimeout(to);
-    if(tok!==netTok){try{p&&p.destroy();}catch(e){}return;}
-    f(a);
-  };
-  const to=setTimeout(()=>{try{p&&p.destroy();}catch(e){}fin(err,{type:'timeout'});},30000);
-  try{
-    p=new Peer(id||undefined,Object.assign({debug:0},NET));
-    p.on('open',()=>fin(ok,p));
-    p.on('error',e=>{if(!done){try{p.destroy();}catch(x){}fin(err,e||{type:'server-error'});}});
-    p.on('disconnected',()=>{if(!done){try{p.reconnect();}catch(e){}}});
-  }catch(e){fin(err,e);}
-}
-function dial(id,tok,ok,err){
-  mkPeer(null,tok,p=>{
-    let done=false;
-    const fin=(f,a)=>{
-      if(done)return;done=true;clearTimeout(to);
-      if(tok!==netTok){try{p.destroy();}catch(e){}return;}
-      f(a);
-    },to=setTimeout(()=>{try{p.destroy();}catch(e){}fin(err,{type:'dial-timeout'});},7000);
-    p.on('error',e=>{try{p.destroy();}catch(x){}fin(err,e);});
-    try{const c=p.connect(id,{reliable:true});c.on('open',()=>fin(ok,{p,c}));c.on('error',e=>fin(err,e));}
-    catch(e){fin(err,e);}
-  },err);
-}
-function link(p,c,role,lost){
-  const tk=netTok;let on=role===1,dead=false;
-  const lose=()=>{if(dead)return;dead=true;clearTimeout(nTimer);on?onClose():lost&&lost();};
-  peer=p;conn=c;
-  let lastRx=Date.now(),lastTick=Date.now();
-  const hb=setInterval(()=>{
-    if(tk!==netTok||dead){clearInterval(hb);return;}
-    const now=Date.now();
-    if(now-lastTick>4000)lastRx=now;   /* this tab was frozen/backgrounded: don't blame the opponent */
-    lastTick=now;
-    try{if(c.open)c.send({k:'p'});}catch(e){}
-    if(on&&now-lastRx>9000){clearInterval(hb);lose();}
-  },2000);
-  c.on('data',d=>{if(tk!==netTok)return;lastRx=Date.now();if(d&&d.k==='p')return;if(!on&&d&&d.k==='go'){on=true;clearTimeout(nTimer);startOnline(2);}else if(on)onData(d);});
-  c.on('close',()=>{if(tk===netTok)lose();});
-  p.on('error',()=>{});p.on('disconnected',()=>{try{p.reconnect();}catch(e){}});
-  if(role===1){net({k:'go'});startOnline(1);}
-  else nTimer=setTimeout(()=>{if(!on){try{c.close();}catch(e){}lose();}},6000);
+/* Connect to our server. ok(socket) is called once connected. Render's free plan sleeps when idle,
+   so the first connection can take ~30-60s: socket.io keeps retrying until the server wakes up. */
+function connect(tok,ok,err){
+  if(typeof io==='undefined')return err({type:'nolib'});
+  let done=false;
+  const fin=(f,a)=>{if(done)return;done=true;clearTimeout(to);clearTimeout(slow);if(tok!==netTok)return;f(a);};
+  const to=setTimeout(()=>fin(err,{type:'timeout'}),70000);
+  const slow=setTimeout(()=>{if(tok===netTok&&!done)$('nm').textContent='Waking up the game server… this can take up to a minute.';},6000);
+  const s=io(NET.url,{transports:['websocket','polling'],reconnection:true,reconnectionAttempts:8,reconnectionDelay:1500,reconnectionDelayMax:6000,timeout:20000});
+  sock=s;
+  s.on('connect',()=>fin(ok,s));
+  s.io.on('reconnect_failed',()=>fin(err,{type:'server-error'}));
+  s.on('start',d=>{if(tok!==netTok)return;conn=true;startOnline(d&&d.role===2?2:1);});
+  s.on('m',d=>{if(tok!==netTok)return;onData(d);});
+  s.on('peer-left',()=>{if(tok!==netTok)return;conn=false;onClose();});
+  s.on('disconnect',()=>{
+    if(tok!==netTok||!done)return;
+    const was=conn;conn=false;
+    if(mode==='online'&&was){drop();if(!over)end(3-myP,'Connection lost. You were disconnected from the server.');}
+    else if(mode!=='online')netFail(msg());
+  });
 }
 function startOnline(role){
   clearTimeout(nTimer);myP=role;mode='online';
@@ -770,44 +745,36 @@ function onData(d){
   }catch(e){}finally{rx=false;}
 }
 window.addEventListener('pagehide',()=>{
-  if(mode==='online'&&!over){try{if(conn&&conn.open)conn.send({k:'bye'});}catch(e){}try{conn&&conn.close();}catch(e){}}
+  if(mode==='online'&&!over&&sock&&conn){try{sock.emit('m',{k:'bye'});}catch(e){}try{sock.disconnect();}catch(e){}}
 });
 function onClose(){if(mode==='online'&&!over)end(myP,'Opponent disconnected. You win!');else if(mode==='online'&&over&&rmMe){rmMe=false;$('ms').textContent='Your friend left the room.';rematchUI();}}
 function quick(){
-  const tok=++netTok,order=[...Array(QN).keys()].sort(()=>Math.random()-.5);let i=0;
+  const tok=++netTok;
   netUI('Quick Match','Searching for an opponent…');
-  const again=()=>{drop();if(tok===netTok)nTimer=setTimeout(scan,300+rnd(1200));},
-  scan=()=>{
-    if(tok!==netTok)return;
-    if(i>=QN){i=0;return claim();}
-    dial(PFX+order[i++],tok,r=>link(r.p,r.c,2,again),e=>soft(e)?scan():netFail(msg(e)));
-  },
-  claim=()=>mkPeer(PFX+order[rnd(QN)],tok,p=>{
-    peer=p;p.on('error',()=>{});
-    p.on('connection',c=>c.on('open',()=>{if(conn||tok!==netTok){c.close();return;}clearTimeout(nTimer);link(p,c,1);}));
-    nTimer=setTimeout(()=>{if(!conn)again();},8000);
-  },e=>soft(e)?again():netFail(msg(e)));
-  scan();
+  connect(tok,s=>{s.emit('quick');netUI('Quick Match','Searching for an opponent…');},e=>netFail(msg(e)));
 }
-function create(attempt=0){
-  const tok=netTok,code=Array.from({length:4},()=>ALPHA[rnd(ALPHA.length)]).join('');
-  netUI('Private Room','Connecting to the public PeerJS signaling server…');
-  mkPeer('bbroom-'+code,tok,p=>{
-    peer=p;netUI('Private Room','Share this code with your friend and wait for them to join…',code);CGM.open(code);$('ncp').classList.toggle('hidden',!CG.ok);
-    p.on('connection',c=>c.on('open',()=>{if(conn||tok!==netTok){c.close();return;}link(p,c,1);}));
-    p.on('error',e=>{if(tok===netTok&&!conn)netFail(msg(e));});
-  },e=>{
-    if(tok===netTok&&attempt<2&&e&&['unavailable-id','timeout','server-error','socket-error','network','disconnected'].includes(e.type)){
-      netUI('Retrying room creation',`PeerJS connection attempt ${attempt+2} of 3…`);
-      setTimeout(()=>{if(tok===netTok)create(attempt+1);},700*(attempt+1));
-    }else netFail(msg(e));
-  });
+function create(){
+  const tok=netTok;
+  netUI('Private Room','Connecting to the game server…');
+  connect(tok,s=>{
+    s.emit('create',r=>{
+      if(tok!==netTok)return;
+      if(!r||!r.ok)return netFail(msg());
+      netUI('Private Room','Share this code with your friend and wait for them to join…',r.code);
+      CGM.open(r.code);$('ncp').classList.toggle('hidden',!CG.ok);
+    });
+  },e=>netFail(msg(e)));
 }
 function join(code){
   code=code.toUpperCase().replace(/[^A-Z0-9]/g,'');
   if(code.length!==4){$('nm').textContent='Enter the 4-character room code.';return;}
   netClose();const tok=++netTok;roomCode=code;netUI('Joining room…','Connecting…',code);
-  dial('bbroom-'+code,tok,r=>link(r.p,r.c,2,()=>netFail('Couldn’t enter that room.')),e=>netFail(msg(e)));
+  connect(tok,s=>{
+    s.emit('join',code,r=>{
+      if(tok!==netTok)return;
+      if(!r||!r.ok)netFail(msg({type:(r&&r.error)||'not-found'}));
+    });
+  },e=>netFail(msg(e)));
 }
 function onl(v){
   try{

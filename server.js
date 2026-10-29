@@ -1,9 +1,9 @@
-/* Blockade Box server: leaderboard API + PeerJS signaling (one service). */
+/* Blockade Box server: leaderboard API + Socket.io multiplayer relay (one service). */
 const http    = require('http');
 const fs      = require('fs');
 const path    = require('path');
 const express = require('express');
-const { ExpressPeerServer } = require('peer');
+const { Server } = require('socket.io');
 
 const PORT      = process.env.PORT || 3000;
 const ORIGIN    = process.env.ALLOWED_ORIGIN || '*';
@@ -110,30 +110,108 @@ const handler = async (req,res) => {
   } catch(e) { console.error(e); send(res,500,{ error:'server' }); }
 };
 
-/* ---------------- Express + PeerJS ---------------- */
+/* ---------------- Express + Socket.io ---------------- */
 const app = express();
 app.set('trust proxy', 1);
 const server = http.createServer(app);
 
-// PeerJS route must match the client config in index.html: path: '/peerjs'.
-// Mounting the middleware at '/peerjs' with its internal path '/' exposes
-// the signaling endpoint at /peerjs and avoids accidentally creating a
-// doubled or mismatched route.
-const peerServer = ExpressPeerServer(server, {
-  path: '/',
-  proxied: true,
-  allow_discovery: false,
-  debug: true
+const io = new Server(server, {
+  cors: { origin: ORIGIN },
+  pingInterval: 4000,      // detect a dead player within ~10s
+  pingTimeout: 6000,
+  maxHttpBufferSize: 4000  // game messages are tiny
 });
 
-peerServer.on('connection', client => console.log(`[peer] ✅ connected: ${client.getId()}`));
-peerServer.on('disconnect', client => console.log(`[peer] ❌ disconnected: ${client.getId()}`));
+/* ---------------- Multiplayer rooms ----------------
+   Server only relays moves between the 2 players of a room. Protocol (client -> server):
+     'create' (ack)        -> {ok, code}           host makes a private room
+     'join' (code, ack)    -> {ok} | {ok:false, error:'not-found'|'full'}
+     'quick'                                        enter the quick-match queue
+     'm' (data)                                     relay a game message to the opponent
+   Server -> client:
+     'start' {role:1|2}    both players are in the room, game begins
+     'm' data              message from the opponent
+     'peer-left'           opponent disconnected / left                              */
+const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const rooms = new Map();   // code -> { players:[hostSocket, guestSocket|null] }
+let waiting = null;        // socket waiting in the quick-match queue
 
-app.use('/peerjs', peerServer);
+function newCode() {
+  let c;
+  do { c = Array.from({ length: 4 }, () => ALPHA[Math.floor(Math.random() * ALPHA.length)]).join(''); }
+  while (rooms.has(c));
+  return c;
+}
+function startRoom(r) {
+  r.players[0].emit('start', { role: 1 });
+  r.players[1].emit('start', { role: 2 });
+}
+function leaveAll(s) {
+  if (waiting === s) waiting = null;
+  const code = s.data.room;
+  if (!code) return;
+  s.data.room = null;
+  const r = rooms.get(code);
+  if (!r) return;
+  rooms.delete(code);
+  for (const p of r.players) if (p && p !== s) { p.data.room = null; p.emit('peer-left'); }
+}
 
-app.get('/health', (_req,res) => res.json({ ok:true, uptime:process.uptime() }));
+io.on('connection', socket => {
+  socket.data.room = null;
+  let burst = 0;
+  const tick = setInterval(() => { burst = 0; }, 1000);
+
+  socket.on('create', ack => {
+    if (typeof ack !== 'function') return;
+    leaveAll(socket);
+    const code = newCode();
+    rooms.set(code, { players: [socket, null] });
+    socket.data.room = code;
+    ack({ ok: true, code });
+  });
+
+  socket.on('join', (code, ack) => {
+    if (typeof ack !== 'function') return;
+    leaveAll(socket);
+    code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+    const r = rooms.get(code);
+    if (!r) return ack({ ok: false, error: 'not-found' });
+    if (r.players[1]) return ack({ ok: false, error: 'full' });
+    r.players[1] = socket;
+    socket.data.room = code;
+    ack({ ok: true });
+    startRoom(r);
+  });
+
+  socket.on('quick', () => {
+    leaveAll(socket);
+    if (waiting && waiting.connected && waiting !== socket) {
+      const host = waiting; waiting = null;
+      const code = newCode();
+      const r = { players: [host, socket] };
+      rooms.set(code, r);
+      host.data.room = code; socket.data.room = code;
+      startRoom(r);
+    } else waiting = socket;
+  });
+
+  socket.on('m', d => {
+    if (++burst > 40) return;                       // flood protection
+    const r = rooms.get(socket.data.room);
+    if (!r || !d || typeof d !== 'object') return;
+    let size = 0; try { size = JSON.stringify(d).length; } catch (e) { return; }
+    if (size > 400) return;
+    const other = r.players[0] === socket ? r.players[1] : r.players[0];
+    if (other) other.emit('m', d);
+  });
+
+  socket.on('disconnect', () => { clearInterval(tick); leaveAll(socket); });
+});
+
+app.get('/health', (_req,res) => res.json({ ok:true, uptime:process.uptime(), rooms:rooms.size }));
 app.use(handler);
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server listening on port ${PORT}`);
 });
