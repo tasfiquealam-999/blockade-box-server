@@ -115,16 +115,18 @@ const app = express();
 app.set('trust proxy', 1);
 const server = http.createServer(app);
 
-// PeerJS Server (Official Route Setup)
+// ⚠️ THE FIX: 'path' must NOT have a leading slash, and we mount directly.
 const peerServer = ExpressPeerServer(server, {
-  path: '/peerjs',
+  path: 'peerjs', // <-- No leading slash
   proxied: true,
   allow_discovery: false,
-  debug: true // ডিবাগ চালু রাখলাম যাতে এরর দেখা যায়
+  debug: true
 });
 
-// PeerJS লাইব্রেরি নিজেই রাউটার হ্যান্ডেল করবে, তাই সরাসরি app.use(peerServer) দিতে হবে
-app.use(peerServer); 
+peerServer.on('connection', client => console.log(`[peer] ✅ connected: ${client.getId()}`));
+peerServer.on('disconnect', client => console.log(`[peer] ❌ disconnected: ${client.getId()}`));
+
+app.use(peerServer); // <-- Direct mount
 
 app.get('/health', (_req,res) => res.json({ ok:true, uptime:process.uptime() }));
 app.use(handler);
