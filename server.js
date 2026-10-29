@@ -159,12 +159,11 @@ app.set('trust proxy', 1);
 const server = http.createServer(app);
 
 /* 
-  ⚠️ FIXED PEERJS ROUTING:
-  - Do NOT use app.use('/peerjs', peerServer) with PeerJS 1.0.2 on Express 4.
-  - Use path: '/peerjs' inside the config and mount it directly.
+  ⚠️ CRITICAL FIX: 
+  Do NOT set `path` inside ExpressPeerServer when mounting via app.use('/peerjs', ...).
+  Leaving it as default ('/') makes the route exactly match '/peerjs/id' as expected by the client.
 */
 const peerServer = ExpressPeerServer(server, {
-  path: '/peerjs',
   proxied: true,
   allow_discovery: false,
   debug: process.env.PEER_DEBUG === '1',
@@ -174,12 +173,13 @@ const peerServer = ExpressPeerServer(server, {
 peerServer.on('connection', client => console.log(`[peer] ✅ connected: ${client.getId()}`));
 peerServer.on('disconnect', client => console.log(`[peer] ❌ disconnected: ${client.getId()}`));
 
-app.use(peerServer); // Mount directly!
+// Mount PeerJS to /peerjs
+app.use('/peerjs', peerServer); 
 
 /* Keep-alive / health check for Render free tier */
 app.get('/health', (_req,res) => res.json({ ok:true, ts:Date.now(), peer:'/peerjs', uptime:process.uptime() }));
 
-/* Leaderboard + static files (must be registered last) */
+/* Leaderboard + static files (must be registered last to catch remaining routes) */
 app.use(handler);
 
 /* ---------------- Boot ---------------- */
