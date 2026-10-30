@@ -726,7 +726,7 @@ const GRACE=4000;   /* ms an opponent waits before judging someone else's timeou
 let N=9,cfg=CF.classic,np=2,PL=[1,2],pos,wl,W,gems=[],gm,turn=1,tn=0,over=true,started=false,act,bt,bd,bq,hum,to,lost,gone={},places={},caps={1:0,2:0},crowns=[],tm={},tl=0,names={},vr=0,botT;
 let mode='bot',gmode='classic',offMode='classic',diff='medium',total=0,gen=0,ft,ctl='auto',ori='h',drag=null,skipUntil=0,ac,mute=false,lastT=Date.now();
 let chatMsgs=[],chatUnread=0,chatOpen=false,chatMuted=false,chatLast=0;
-let rdyEcho={},sock=null,conn=false,pubRoom=false,isHost=false,myP=1,netTok=0,nTimer=null,rx=false,points=0,isQ=false,xw={1:0,2:0,3:0,4:0},resigned=false,adsUsed=0,adDone=false,adPlaying=false,adBusy=false,adMute=false,booted=false,gamesDone=0;
+let earlyRdy=[],rdyEcho={},sock=null,conn=false,pubRoom=false,isHost=false,myP=1,netTok=0,nTimer=null,rx=false,points=0,isQ=false,xw={1:0,2:0,3:0,4:0},resigned=false,adsUsed=0,adDone=false,adPlaying=false,adBusy=false,adMute=false,booted=false,gamesDone=0;
 let onNames=[],onCs=[],onSk=[],wrD=null,rdy={},skins={},pc={},rmSet={},rmMe=false;
 let own=new Set(),skin='',shopFx=-1,shopPg=0,ownA=new Set(),anim='',anims={},shopTab='b',shopEm=-1,mvfx=null,ownM=new Set(),mvk='',mvs={},anPg=0,mvPg=0;
 const cu=p=>cfg.team?cfg.team[p]:p;                       /* clock / goal unit of a player */
@@ -855,7 +855,7 @@ const mix=(c,t,a)=>{const n=parseInt(c.slice(1),16),m=parseInt(t.slice(1),16),f=
 const bst=c=>`--c:${c};--c2:${mix(c,'#ffffff',.45)};--c3:${mix(c,'#000000',.5)};--cg:${c}99`;
 const rgbOf=c=>{const n=parseInt(c.slice(1),16);return`${n>>16&255},${n>>8&255},${n&255}`;};
 function hx(c){const n=parseInt(c.slice(1),16),r=(n>>16&255)/255,g=(n>>8&255)/255,b=(n&255)/255,mx=Math.max(r,g,b),mn=Math.min(r,g,b),l=(mx+mn)/2,d=mx-mn;let h=0,s=0;if(d){s=d/(1-Math.abs(2*l-1));h=mx===r?((g-b)/d+6)%6:mx===g?(b-r)/d+2:(r-g)/d+4;h*=60;}return{h,s,l};}
-function clash(a,b){const x=hx(a),y=hx(b);if(x.s<.25||y.s<.25)return x.s<.25&&y.s<.25&&Math.abs(x.l-y.l)<.3;const d=Math.abs(x.h-y.h);return Math.min(d,360-d)<32;}
+function clash(a,b){const x=hx(a),y=hx(b);if(x.s<.25||y.s<.25)return x.s<.25&&y.s<.25&&Math.abs(x.l-y.l)<.3;const d=Math.abs(x.h-y.h);return Math.min(d,360-d)<14;}
 /* Team-mates share ONE colour/ball. My own team is resolved first, and an opposing ball is swapped for a non-clashing default if it would look the same. */
 function colors(){
   const me=myIdx(),mu=cu(me),units=[...new Set(PL.map(cu))].sort((a,b)=>(a===mu?0:1)-(b===mu?0:1)||a-b),chosen=[],uc={};
@@ -1352,7 +1352,7 @@ function drop(){
   if(sock){const s=sock;sock=null;try{s.removeAllListeners();s.disconnect();}catch(e){}}
   chatSync();
 }
-function netClose(){netTok++;drop();CGM.leave();wrD=null;$('wr').classList.add('hidden');chatReset();}
+function netClose(){earlyRdy=[];netTok++;drop();CGM.leave();wrD=null;$('wr').classList.add('hidden');chatReset();}
 function net(d){try{if(sock&&conn)sock.emit('m',d);}catch(e){flash('Connection problem');}}
 function netFail(m){netClose();netUI('Online unavailable',m||msg());}
 function connect(tok,ok,err){
@@ -1367,7 +1367,7 @@ function connect(tok,ok,err){
   s.io.on('reconnect_failed',()=>fin(err,{type:'server-error'}));
   s.on('start',d=>{
     if(tok!==netTok)return;
-    conn=true;gmode=CF[d&&d.mode]?d.mode:'classic';pubRoom=!!(d&&d.pub);onNames=(d&&d.names)||[];onCs=(d&&d.cs)||[];onSk=(d&&d.ss)||[];isQ=!!(d&&d.q);   /* quick rules follow the ROOM, so every player in it plays by the same rules */
+    conn=true;gmode=CF[d&&d.mode]?d.mode:'classic';pubRoom=!!(d&&(d.pub||d.q));onNames=(d&&d.names)||[];onCs=(d&&d.cs)||[];onSk=(d&&d.ss)||[];isQ=!!(d&&d.q);   /* quick rules follow the ROOM, so every player in it plays by the same rules */
     
     startOnline(d&&d.role>=1&&d.role<=CF[gmode].np?d.role:1,(d&&d.bots)||[]);
   });
@@ -1401,6 +1401,7 @@ function startOnline(role,bots){
   rdy[myP]=1;skins[myP]=skin;anims[myP]=anim;mvs[myP]=mvk;pcs[myP]=cc;colors();
   if(!isQ&&roomCode)CGM.full();
   net({k:'rdy',p:myP,n:cgName||pname,s:skin,a:anim,v:mvk,c:cc});
+  { const eq=earlyRdy;earlyRdy=[];eq.forEach(x=>{rdyEcho[x.p]=1;onData(x);}); }   /* apply what the other side sent before we were ready */
   if(allReady())begin();
   else{render();nTimer=setTimeout(()=>{if(!started){PL.forEach(p=>{if(!rdy[p]){gone[p]=1;bt[p]=true;bd[p]='easy';lost[p]=true;}});begin();}},10000);}
 }
@@ -1408,7 +1409,8 @@ function begin(){clearTimeout(nTimer);$('wr').classList.add('hidden');$('net').c
 function onData(d){
   if(!d)return;
   if(d.k==='rdy'){
-    if(mode!=='online'||!d.p)return;
+    if(!d.p)return;
+    if(mode!=='online'){if(earlyRdy.length<8)earlyRdy.push(d);return;}
     const firstRdy=!rdy[d.p];
     rdy[d.p]=1;skins[d.p]=SK[d.s]?d.s:'';anims[d.p]=AK[d.a]?d.a:'';mvs[d.p]=MK[d.v]?d.v:'';if(d.c&&CM[d.c])pcs[d.p]=d.c;if(d.n&&!names[d.p])names[d.p]=cleanName(d.n);
     if(firstRdy&&d.p!==myP&&!rdyEcho[d.p]){rdyEcho[d.p]=1;net({k:'rdy',p:myP,n:cgName||pname,s:skin,a:anim,v:mvk,c:cc});}
@@ -1463,7 +1465,7 @@ function roomUI(d){
   $('net').classList.add('hidden');$('wr').classList.remove('hidden');chatSync();
 }
 function renderWR(d){
-  const cap=d.cap,me=d.you,isH=me===d.host,n=d.seats.filter(Boolean).length,full=n>=cap,team=cap===4&&d.mode!=='ffa';
+  const cap=d.cap,me=d.you,isH=me===d.host,n=d.seats.filter(Boolean).length,full=n>=cap,team=cap===4&&d.mode!=='ffa',pubL=!!(d.pub||d.q);
   const col=i=>DEFC[team?i%2:i];
   const slot=(i,tap)=>{
     const s=d.seats[i],c=col(i),mine=i===me;
@@ -1472,7 +1474,7 @@ function renderWR(d){
     return`<div class="wslot${mine?' me':''}" style="--sc:${rgbOf(c)}"><span class="wav">${ballH(sk?sk.c:c,sk?sk.fx:'d','64%')}${i===d.host?'<i class="whost" title="Host">👑</i>':''}</span><b class="wnm">${esc(s.n)}${mine?' <em>(you)</em>':''}</b><span class="wct">${cn?flagS(cn)+'<span>'+esc(CM[cn])+'</span>':'<span>🌍 No country</span>'}</span></div>`;
   };
   const colH=(seats,title,sub,tap)=>`<div class="wcol" style="--tc:${rgbOf(col(seats[0]))}"><h4>${title}${sub?`<small>${sub}</small>`:''}</h4>${seats.map(i=>slot(i,tap)).join('')}</div>`;
-  const vs=`<div class="wvs"><b>VS</b><button class="btn yel" data-do="online:share">Invite</button></div>`;
+  const vs=`<div class="wvs"><b>VS</b>${pubL?'':'<button class="btn yel" data-do="online:share">Invite</button>'}</div>`;
   let body;
   if(team){
     const mt=me%2,L=mt===0?[0,2]:[1,3],R=mt===0?[1,3]:[0,2];
@@ -1482,18 +1484,20 @@ function renderWR(d){
   }else{
     body=`<div class="wffa">${[0,1,2,3].map(i=>colH([i],'Seat '+(i+1),'',1)).join('')}</div>`;
   }
-  $('wrc').textContent=d.code;
-  $('wrt').textContent=(d.q?'⚡ Quick Match · ':'')+(MN[d.mode]||'')+' · '+(d.pub?'Public':'Private')+' room';
+  $('wrc').textContent=d.q?'QUICK MATCH':d.code;
+  const wsh=document.querySelector('#wr .wrsh [data-do="online:share"]');if(wsh)wsh.style.display=d.q?'none':'';
+  const wsm=document.querySelector('#wr .wrh small');if(wsm)wsm.textContent=d.q?'MATCHMAKING':'ROOM CODE';
+  $('wrt').textContent=(d.q?'⚡ Quick Match · ':'')+(MN[d.mode]||'')+' · '+(pubL?'Public':'Private')+' room';
   $('wrs').textContent=n+'/'+cap+' players joined';
   $('wrb').innerHTML=body;
   let note,a='';
   if(team)a+='<button class="btn" data-do="online:swap">⇄ Switch team</button>';
   else if(cap===4)a+='<button class="btn" data-do="online:swap">⇄ Change seat</button>';
-  if(!d.pub&&isH){
+  if(!pubL&&isH){
     a+=`<button class="btn yel" data-do="online:begin"${full?'':' disabled'}>▶ Start game</button>`;
     if(!full)a+='<button class="btn" data-do="online:beginb">🤖 Fill empty seats with bots &amp; start</button>';
     note=full?'Everyone is here. Press Start game when you are ready.':`Waiting for players… share the room code to invite friends.`;
-  }else if(!d.pub)note=full?'Waiting for the host to start the game…':'Waiting for more players…';
+  }else if(!pubL)note=full?'Waiting for the host to start the game…':'Waiting for more players…';
   else note=full?'Starting…':cap===2?'Searching for an opponent… the game starts as soon as someone joins.':'Waiting for players… the game starts automatically when the room is full.';
   $('wrn').textContent=note;$('wra').innerHTML=a;
 }
