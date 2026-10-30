@@ -166,22 +166,35 @@ function createRoom(socket, data = {}, isQuick = false) {
   joinSeat(socket, room, 0);
   return room;
 }
-function startMatch(room, bots = []) {
-  if (room.started) return;
-  const connected = room.seats.filter(Boolean).length;
-  const botSeats = Array.isArray(bots) ? bots.map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= room.cap) : [];
-  if (connected + new Set(botSeats).size < room.cap) return;
-  room.bots = [...new Set(botSeats)].filter(role => !room.seats[role - 1]).map(role => role - 1);
+function startMatch(room) {
+  if (!room || room.started) return false;
+
+  // Online matches start only when every required seat is occupied by a real player.
+  // No automatic bot-fill is allowed in online rooms.
+  const connectedSeats = room.seats.filter(Boolean).length;
+  if (connectedSeats < room.cap) {
+    console.log(`[match] Waiting for players in ${room.code}: ${connectedSeats}/${room.cap}`);
+    return false;
+  }
+
+  room.bots = [];
   room.started = true;
-  const names = room.seats.map((s, i) => s ? s.n : (room.bots.includes(i) ? `Bot ${i + 1}` : ''));
+  room.lastActivity = Date.now();
+  const names = room.seats.map(s => s ? s.n : '');
   const cs = room.seats.map(s => s ? s.c : '');
   const ss = room.seats.map(s => s ? s.s : '');
+
+  console.log(`[match] Starting ${room.mode} room ${room.code} (${room.q ? 'quick' : room.pub ? 'public' : 'private'})`);
   for (let i = 0; i < room.cap; i++) {
     const seat = room.seats[i];
     if (!seat) continue;
-    io.to(seat.id).emit('start', { mode: room.mode, pub: room.pub, q: room.q, role: i + 1, bots: room.bots.map(n => n + 1), names, cs, ss });
+    io.to(seat.id).emit('start', {
+      mode: room.mode, pub: room.pub, q: room.q, role: i + 1,
+      bots: [], names, cs, ss
+    });
   }
   broadcastRoom(room);
+  return true;
 }
 function findQuickRoom(mode) {
   return [...rooms.values()].find(r => r.q && r.mode === mode && !r.started && r.seats.filter(Boolean).length < r.cap);
@@ -244,17 +257,24 @@ io.on('connection', socket => {
     }
   });
 
-  socket.on('start', data => {
+  socket.on('start', () => {
     const room = getRoomFor(socket);
     if (!room || room.started) return;
-    const seatIndex = room.seats.findIndex(s => s && s.id === socket.id);
-    if (seatIndex !== room.host) return;
-    if (data && data.bots) {
-      const missing = room.seats.map((s, i) => s ? null : i + 1).filter(Boolean);
-      startMatch(room, missing);
-    } else {
-      startMatch(room);
+
+    // Manual start is reserved for the host of a private room only.
+    // Public rooms and Quick Match start automatically when full.
+    if (room.pub || room.q) {
+      console.log(`[match] Ignored manual start for public/quick room ${room.code}`);
+      return;
     }
+
+    const seatIndex = room.seats.findIndex(s => s && s.id === socket.id);
+    if (seatIndex !== room.host) {
+      console.log(`[match] Ignored start from non-host in room ${room.code}`);
+      return;
+    }
+
+    startMatch(room);
   });
 
   socket.on('seat', data => {
