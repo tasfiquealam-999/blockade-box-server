@@ -1,217 +1,320 @@
-/* Blockade Box server: leaderboard API + Socket.io multiplayer relay (one service). */
-const http    = require('http');
-const fs      = require('fs');
-const path    = require('path');
+/**
+ * Blockade Board multiplayer relay server
+ * Compatible with the Socket.IO event protocol used by the supplied index.html.
+ * Node.js 18+ recommended.
+ */
+'use strict';
+
+const http = require('http');
 const express = require('express');
 const { Server } = require('socket.io');
+const crypto = require('crypto');
 
-const PORT      = process.env.PORT || 3000;
-const ORIGIN    = process.env.ALLOWED_ORIGIN || '*';
-const MAX_STEP  = 30;
-const FIRST_MAX = 300;
-const MIN_GAP_MS = 4000;
-const IP_LIMIT  = 90;
+const PORT = Number(process.env.PORT || 3000);
+const ORIGINS = (process.env.CORS_ORIGIN || '*').split(',').map(s => s.trim()).filter(Boolean);
+const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
+const CHAT_MAX = 120;
+const MODES = new Set(['classic', 'race', 'king', '2v2', '3pt', 'ffa']);
+const CAPACITY = { classic: 2, race: 2, king: 2, '2v2': 4, '3pt': 4, ffa: 4 };
 
-const TYPES = {
-  '.html':'text/html; charset=utf-8', '.css':'text/css; charset=utf-8',
-  '.js':'application/javascript; charset=utf-8', '.json':'application/json; charset=utf-8',
-  '.woff2':'font/woff2', '.png':'image/png', '.jpg':'image/jpeg', '.jpeg':'image/jpeg',
-  '.svg':'image/svg+xml', '.ico':'image/x-icon'
-};
-const BAD = ['fuck','shit','bitch','cunt','dick','pussy','nigg','fag','rape','nazi','hitler','porn','sex','asshole','whore','slut','chudi','magi','khanki','madarchod','bokachoda'];
-
-/* ---------------- Storage ---------------- */
-let store;
-if (process.env.DATABASE_URL) {
-  const { Pool } = require('pg');
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
-  const ready = pool.query(`CREATE TABLE IF NOT EXISTS lb(id TEXT PRIMARY KEY, name TEXT NOT NULL, points INT NOT NULL, updated TIMESTAMPTZ NOT NULL DEFAULT now()); CREATE INDEX IF NOT EXISTS lb_points ON lb(points DESC, updated ASC);`);
-  store = {
-    async get(id){ await ready; const r = await pool.query('SELECT id,name,points,EXTRACT(EPOCH FROM updated)*1000 AS t FROM lb WHERE id=$1',[id]); return r.rows[0] ? { ...r.rows[0], t:+r.rows[0].t } : null; },
-    async put(id,name,points){ await ready; await pool.query(`INSERT INTO lb(id,name,points,updated) VALUES($1,$2,$3,now()) ON CONFLICT(id) DO UPDATE SET name=$2, points=$3, updated=now()`,[id,name,points]); },
-    async top(n){ await ready; return (await pool.query('SELECT id,name,points FROM lb ORDER BY points DESC, updated ASC LIMIT $1',[n])).rows; },
-    async rank(points){ await ready; return +(await pool.query('SELECT COUNT(*)+1 AS r FROM lb WHERE points>$1',[points])).rows[0].r; }
-  };
-  console.log('✅ Storage: Postgres');
-} else {
-  const m = new Map();
-  store = {
-    async get(id){ return m.get(id) || null; },
-    async put(id,name,points){ m.set(id,{ id,name,points,t:Date.now() }); },
-    async top(n){ return [...m.values()].sort((a,b)=>b.points-a.points||a.t-b.t).slice(0,n); },
-    async rank(points){ let c=1; for(const v of m.values()) if(v.points>points) c++; return c; }
-  };
-  console.log('⚠️  Storage: in-memory');
-}
-
-/* ---------------- Helpers ---------------- */
-const hits = new Map();
-setInterval(()=>hits.clear(), 60000).unref();
-const limited = ip => { const n=(hits.get(ip)||0)+1; hits.set(ip,n); return n>IP_LIMIT; };
-const clean = raw => {
-  let n = String(raw||'').replace(/[\u0000-\u001f<>&"'`\\]/g,'').replace(/\s+/g,' ').trim().slice(0,14);
-  const flat = n.toLowerCase().replace(/[^a-z0-9]/g,'');
-  if (!n || BAD.some(w=>flat.includes(w))) n = 'Player'+(1000+Math.floor(Math.random()*9000));
-  return n;
-};
-const send = (res,code,body,type='application/json') => {
-  res.writeHead(code,{ 'Content-Type':type, 'Access-Control-Allow-Origin':ORIGIN, 'Access-Control-Allow-Methods':'GET,POST,OPTIONS', 'Access-Control-Allow-Headers':'Content-Type', 'Cache-Control':'no-store' });
-  res.end(typeof body==='string' ? body : JSON.stringify(body));
-};
-const readBody = req => new Promise((ok,no)=>{
-  let d=''; req.on('data',c=>{ d+=c; if(d.length>2000){ no(new Error('big')); req.destroy(); } });
-  req.on('end',()=>ok(d)); req.on('error',no);
-});
-const validId = id => typeof id==='string' && /^[A-Za-z0-9_-]{4,40}$/.test(id);
-
-/* ---------------- Leaderboard ---------------- */
-const handler = async (req,res) => {
-  try {
-    if (req.method==='OPTIONS') return send(res,204,'');
-    const u = new URL(req.url,'http://x');
-    if (req.method==='GET' && !u.pathname.startsWith('/api/')) {
-      const rel  = u.pathname==='/' ? 'index.html' : decodeURIComponent(u.pathname).replace(/^\/+/,'');
-      const file = path.resolve(__dirname, rel);
-      const type = TYPES[path.extname(file).toLowerCase()];
-      if (type && file.startsWith(__dirname+path.sep) && fs.existsSync(file) && fs.statSync(file).isFile()) {
-        res.writeHead(200,{ 'Content-Type':type, 'Cache-Control':'no-cache' });
-        return fs.createReadStream(file).pipe(res);
-      }
-      if (u.pathname==='/') return send(res,200,'ok','text/plain');
-    }
-    if (!u.pathname.startsWith('/api/leaderboard')) return send(res,404,{ error:'not found' });
-    const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
-    if (limited(ip)) return send(res,429,{ error:'slow down' });
-    if (req.method==='GET') {
-      const id = u.searchParams.get('id') || '';
-      const rows = await store.top(100);
-      const top  = rows.map(r=>({ n:r.name, p:r.points, me:r.id===id?1:0 }));
-      const mine = validId(id) ? await store.get(id) : null;
-      const rank = await store.rank(mine ? mine.points : 0);
-      return send(res,200,{ top, rank });
-    }
-    if (req.method==='POST') {
-      let b; try { b = JSON.parse(await readBody(req)); } catch(e){ return send(res,400,{ error:'bad json' }); }
-      if (!validId(b.id)) return send(res,400,{ error:'bad id' });
-      const pts = Math.floor(Number(b.points));
-      if (!Number.isFinite(pts) || pts<0 || pts>1000000) return send(res,400,{ error:'bad points' });
-      const name = clean(b.name);
-      const old  = await store.get(b.id);
-      let next = pts;
-      if (!old) { next = Math.min(pts, FIRST_MAX); }
-      else {
-        if (Date.now()-old.t < MIN_GAP_MS && pts !== old.points) return send(res,429,{ error:'too fast' });
-        next = Math.max(old.points-MAX_STEP, Math.min(old.points+MAX_STEP, pts));
-      }
-      await store.put(b.id, name, next);
-      return send(res,200,{ ok:true, rank: await store.rank(next) });
-    }
-    send(res,405,{ error:'method' });
-  } catch(e) { console.error(e); send(res,500,{ error:'server' }); }
-};
-
-/* ---------------- Express + Socket.io ---------------- */
 const app = express();
-app.set('trust proxy', 1);
-const server = http.createServer(app);
-
-const io = new Server(server, {
-  cors: { origin: ORIGIN },
-  pingInterval: 4000,      // detect a dead player within ~10s
-  pingTimeout: 6000,
-  maxHttpBufferSize: 4000  // game messages are tiny
+app.disable('x-powered-by');
+app.get('/', (_req, res) => res.status(200).json({
+  name: 'Blockade Board multiplayer server',
+  status: 'ok',
+  socketio: true,
+  uptime: Math.floor(process.uptime())
+}));
+app.get('/health', (_req, res) => res.status(200).json({ ok: true, rooms: rooms.size }));
+app.get('/api/rooms', (_req, res) => {
+  const list = [...rooms.values()]
+    .filter(r => r.pub && !r.started && r.seats.some(Boolean) && r.seats.filter(Boolean).length < r.cap)
+    .slice(0, 50)
+    .map(r => ({ code: r.code, mode: r.mode, q: r.q, n: r.seats.filter(Boolean).length, cap: r.cap, host: (r.seats[r.host] && r.seats[r.host].n) || 'Host', hc: '', seats: r.seats.map(s => s ? ({ n: s.n }) : null) }));
+  res.set('Cache-Control', 'no-store');
+  res.status(200).json({ rooms: list });
 });
 
-/* ---------------- Multiplayer rooms ----------------
-   Server only relays moves between the 2 players of a room. Protocol (client -> server):
-     'create' (ack)        -> {ok, code}           host makes a private room
-     'join' (code, ack)    -> {ok} | {ok:false, error:'not-found'|'full'}
-     'quick'                                        enter the quick-match queue
-     'm' (data)                                     relay a game message to the opponent
-   Server -> client:
-     'start' {role:1|2}    both players are in the room, game begins
-     'm' data              message from the opponent
-     'peer-left'           opponent disconnected / left                              */
-const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const rooms = new Map();   // code -> { players:[hostSocket, guestSocket|null] }
-let waiting = null;        // socket waiting in the quick-match queue
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: { origin: ORIGINS.includes('*') ? '*' : ORIGINS, methods: ['GET', 'POST'] },
+  transports: ['websocket', 'polling'],
+  pingInterval: 25000,
+  pingTimeout: 20000,
+  maxHttpBufferSize: 1e6
+});
 
-function newCode() {
-  let c;
-  do { c = Array.from({ length: 4 }, () => ALPHA[Math.floor(Math.random() * ALPHA.length)]).join(''); }
-  while (rooms.has(c));
-  return c;
+const rooms = new Map();
+const socketRoom = new Map();
+const quickQueues = new Map();
+
+function cleanName(v) {
+  const s = String(v == null ? '' : v).replace(/[\u0000-\u001f<>]/g, ' ').replace(/\s+/g, ' ').trim();
+  return (s || 'Player').slice(0, 18);
 }
-function startRoom(r) {
-  r.players[0].emit('start', { role: 1 });
-  r.players[1].emit('start', { role: 2 });
+function cleanCode(v) {
+  return String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
 }
-function leaveAll(s) {
-  if (waiting === s) waiting = null;
-  const code = s.data.room;
+function cleanMode(v) { return MODES.has(v) ? v : 'classic'; }
+function cleanColour(v) { return /^[a-z0-9_-]{1,24}$/i.test(String(v || '')) ? String(v) : ''; }
+function cleanSkin(v) { return /^[a-z0-9_-]{1,24}$/i.test(String(v || '')) ? String(v) : ''; }
+function roomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  for (let tries = 0; tries < 100; tries++) {
+    let code = '';
+    for (let i = 0; i < 4; i++) code += chars[crypto.randomInt(chars.length)];
+    if (!rooms.has(code)) return code;
+  }
+  throw new Error('Unable to allocate a room code');
+}
+function getRoomFor(socket) {
+  const code = socketRoom.get(socket.id);
+  return code ? rooms.get(code) : null;
+}
+function seatsOf(room) {
+  return room.seats.map(s => s ? ({
+    n: s.n, c: s.c, s: s.s, id: s.id
+  }) : null);
+}
+function roomInfo(room, socket) {
+  const you = room.seats.findIndex(s => s && s.id === socket.id);
+  return {
+    code: room.code,
+    mode: room.mode,
+    pub: room.pub,
+    q: room.q,
+    cap: room.cap,
+    host: room.host,
+    you,
+    seats: seatsOf(room)
+  };
+}
+function broadcastRoom(room) {
+  for (const seat of room.seats) {
+    if (seat && io.sockets.sockets.has(seat.id)) {
+      io.to(seat.id).emit('room', roomInfo(room, io.sockets.sockets.get(seat.id)));
+    }
+  }
+  io.emit('public-rooms', publicRoomList());
+}
+function publicRoomList() {
+  return [...rooms.values()]
+    .filter(r => r.pub && !r.started && r.seats.some(Boolean) && r.seats.filter(Boolean).length < r.cap)
+    .slice(0, 50)
+    .map(r => ({ code: r.code, mode: r.mode, n: r.seats.filter(Boolean).length, cap: r.cap }));
+}
+function removeFromQueue(socket) {
+  for (const [key, queue] of quickQueues) {
+    const next = queue.filter(item => item.id !== socket.id);
+    if (next.length) quickQueues.set(key, next);
+    else quickQueues.delete(key);
+  }
+}
+function detachSocket(socket, { announce = true } = {}) {
+  removeFromQueue(socket);
+  const code = socketRoom.get(socket.id);
+  socketRoom.delete(socket.id);
   if (!code) return;
-  s.data.room = null;
-  const r = rooms.get(code);
-  if (!r) return;
-  rooms.delete(code);
-  for (const p of r.players) if (p && p !== s) { p.data.room = null; p.emit('peer-left'); }
+  const room = rooms.get(code);
+  if (!room) return;
+  const index = room.seats.findIndex(s => s && s.id === socket.id);
+  if (index < 0) return;
+  const wasStarted = room.started;
+  room.seats[index] = null;
+  if (room.host === index) {
+    const nextHost = room.seats.findIndex(Boolean);
+    room.host = nextHost;
+  }
+  if (announce && wasStarted) {
+    for (const seat of room.seats) if (seat) io.to(seat.id).emit('peer-left', { role: index + 1 });
+  }
+  if (!room.seats.some(Boolean)) {
+    rooms.delete(code);
+  } else {
+    // Keep a started match alive for remaining players; waiting rooms are reusable.
+    broadcastRoom(room);
+  }
+}
+function joinSeat(socket, room, index) {
+  if (index < 0 || index >= room.cap || room.seats[index]) return false;
+  const old = socketRoom.get(socket.id);
+  if (old && old !== room.code) detachSocket(socket, { announce: false });
+  room.seats[index] = {
+    id: socket.id,
+    n: cleanName(socket.data.playerName),
+    c: cleanColour(socket.data.colour),
+    s: cleanSkin(socket.data.skin),
+    joinedAt: Date.now()
+  };
+  socketRoom.set(socket.id, room.code);
+  socket.join(room.code);
+  return true;
+}
+function createRoom(socket, data = {}, isQuick = false) {
+  const mode = cleanMode(data.mode);
+  const cap = CAPACITY[mode];
+  const code = roomCode();
+  const room = {
+    code, mode, cap, pub: !!data.pub, q: !!isQuick, host: 0,
+    seats: Array(cap).fill(null), started: false, bots: [],
+    createdAt: Date.now(), lastActivity: Date.now()
+  };
+  rooms.set(code, room);
+  socket.data.playerName = cleanName(data.name);
+  socket.data.colour = cleanColour(data.c);
+  socket.data.skin = cleanSkin(data.s);
+  joinSeat(socket, room, 0);
+  return room;
+}
+function startMatch(room, bots = []) {
+  if (room.started) return;
+  const connected = room.seats.filter(Boolean).length;
+  const botSeats = Array.isArray(bots) ? bots.map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= room.cap) : [];
+  if (connected + new Set(botSeats).size < room.cap) return;
+  room.bots = [...new Set(botSeats)].filter(role => !room.seats[role - 1]).map(role => role - 1);
+  room.started = true;
+  const names = room.seats.map((s, i) => s ? s.n : (room.bots.includes(i) ? `Bot ${i + 1}` : ''));
+  const cs = room.seats.map(s => s ? s.c : '');
+  const ss = room.seats.map(s => s ? s.s : '');
+  for (let i = 0; i < room.cap; i++) {
+    const seat = room.seats[i];
+    if (!seat) continue;
+    io.to(seat.id).emit('start', { mode: room.mode, pub: room.pub, q: room.q, role: i + 1, bots: room.bots.map(n => n + 1), names, cs, ss });
+  }
+  broadcastRoom(room);
+}
+function findQuickRoom(mode) {
+  return [...rooms.values()].find(r => r.q && r.mode === mode && !r.started && r.seats.filter(Boolean).length < r.cap);
+}
+function queueQuick(socket, data) {
+  const mode = cleanMode(data.mode);
+  socket.data.playerName = cleanName(data.name);
+  socket.data.colour = cleanColour(data.c);
+  socket.data.skin = cleanSkin(data.s);
+  let room = findQuickRoom(mode);
+  if (!room) room = createRoom(socket, data, true);
+  else {
+    const index = room.seats.findIndex(s => !s);
+    if (index >= 0) joinSeat(socket, room, index);
+  }
+  const count = room.seats.filter(Boolean).length;
+  for (const seat of room.seats) if (seat) io.to(seat.id).emit('qstat', { n: count, cap: room.cap, mode: room.mode });
+  broadcastRoom(room);
+  if (count >= room.cap) startMatch(room);
 }
 
 io.on('connection', socket => {
-  socket.data.room = null;
-  let burst = 0;
-  const tick = setInterval(() => { burst = 0; }, 1000);
+  socket.emit('public-rooms', publicRoomList());
 
-  socket.on('create', ack => {
-    if (typeof ack !== 'function') return;
-    leaveAll(socket);
-    const code = newCode();
-    rooms.set(code, { players: [socket, null] });
-    socket.data.room = code;
-    ack({ ok: true, code });
+  socket.on('create', (data = {}, ack = () => {}) => {
+    try {
+      detachSocket(socket, { announce: false });
+      const room = createRoom(socket, data, false);
+      room.lastActivity = Date.now();
+      ack({ ok: true, code: room.code });
+      broadcastRoom(room);
+    } catch (e) {
+      ack({ ok: false, error: 'server-error' });
+    }
   });
 
-  socket.on('join', (code, ack) => {
-    if (typeof ack !== 'function') return;
-    leaveAll(socket);
-    code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
-    const r = rooms.get(code);
-    if (!r) return ack({ ok: false, error: 'not-found' });
-    if (r.players[1]) return ack({ ok: false, error: 'full' });
-    r.players[1] = socket;
-    socket.data.room = code;
+  socket.on('join', (data = {}, ack = () => {}) => {
+    const code = cleanCode(data.code);
+    const room = rooms.get(code);
+    if (!room) return ack({ ok: false, error: 'not-found' });
+    if (room.started) return ack({ ok: false, error: 'full' });
+    const index = room.seats.findIndex(s => !s);
+    if (index < 0) return ack({ ok: false, error: 'full' });
+    socket.data.playerName = cleanName(data.name);
+    socket.data.colour = cleanColour(data.c);
+    socket.data.skin = cleanSkin(data.s);
+    if (!joinSeat(socket, room, index)) return ack({ ok: false, error: 'full' });
+    room.lastActivity = Date.now();
     ack({ ok: true });
-    startRoom(r);
+    broadcastRoom(room);
+    if (room.pub && room.seats.filter(Boolean).length >= room.cap) startMatch(room);
   });
 
-  socket.on('quick', () => {
-    leaveAll(socket);
-    if (waiting && waiting.connected && waiting !== socket) {
-      const host = waiting; waiting = null;
-      const code = newCode();
-      const r = { players: [host, socket] };
-      rooms.set(code, r);
-      host.data.room = code; socket.data.room = code;
-      startRoom(r);
-    } else waiting = socket;
+  socket.on('quick', data => {
+    try {
+      detachSocket(socket, { announce: false });
+      queueQuick(socket, data || {});
+    } catch (e) {
+      socket.emit('server-error', { message: 'Could not join quick match' });
+    }
   });
 
-  socket.on('m', d => {
-    if (++burst > 40) return;                       // flood protection
-    const r = rooms.get(socket.data.room);
-    if (!r || !d || typeof d !== 'object') return;
-    let size = 0; try { size = JSON.stringify(d).length; } catch (e) { return; }
-    if (size > 400) return;
-    const other = r.players[0] === socket ? r.players[1] : r.players[0];
-    if (other) other.emit('m', d);
+  socket.on('start', data => {
+    const room = getRoomFor(socket);
+    if (!room || room.started) return;
+    const seatIndex = room.seats.findIndex(s => s && s.id === socket.id);
+    if (seatIndex !== room.host) return;
+    if (data && data.bots) {
+      const missing = room.seats.map((s, i) => s ? null : i + 1).filter(Boolean);
+      startMatch(room, missing);
+    } else {
+      startMatch(room);
+    }
   });
 
-  socket.on('disconnect', () => { clearInterval(tick); leaveAll(socket); });
+  socket.on('seat', data => {
+    const room = getRoomFor(socket);
+    if (!room || room.started) return;
+    const from = room.seats.findIndex(s => s && s.id === socket.id);
+    const to = Number(data && data.to);
+    if (from < 0 || !Number.isInteger(to) || to < 0 || to >= room.cap || room.seats[to]) return;
+    const seat = room.seats[from];
+    room.seats[from] = null;
+    room.seats[to] = seat;
+    if (room.host === from) room.host = to;
+    broadcastRoom(room);
+  });
+
+  socket.on('m', data => {
+    const room = getRoomFor(socket);
+    if (!room || !room.started || !data || typeof data !== 'object') return;
+    const index = room.seats.findIndex(s => s && s.id === socket.id);
+    if (index < 0) return;
+    // Server overwrites player identity to prevent spoofing another seat.
+    const payload = { ...data, p: index + 1 };
+    room.lastActivity = Date.now();
+    for (const seat of room.seats) {
+      if (seat && seat.id !== socket.id) io.to(seat.id).emit('m', payload);
+    }
+  });
+
+  socket.on('chat', data => {
+    const room = getRoomFor(socket);
+    if (!room || !data || typeof data !== 'object') return;
+    const index = room.seats.findIndex(s => s && s.id === socket.id);
+    if (index < 0) return;
+    const t = String(data.t == null ? '' : data.t)
+      .replace(/[\u0000-\u001f<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX);
+    if (!t) return;
+    const seat = room.seats[index];
+    const message = { p: index + 1, n: seat.n, t, ts: Date.now() };
+    room.lastActivity = Date.now();
+    for (const other of room.seats) if (other) io.to(other.id).emit('chat', message);
+  });
+
+  socket.on('disconnect', () => detachSocket(socket));
 });
 
-app.get('/health', (_req,res) => res.json({ ok:true, uptime:process.uptime(), rooms:rooms.size }));
-app.use(handler);
+// Expire abandoned rooms, but don't expire an active match that still has players.
+setInterval(() => {
+  const cutoff = Date.now() - ROOM_TTL_MS;
+  for (const [code, room] of rooms) {
+    if (room.lastActivity < cutoff) {
+      for (const seat of room.seats) if (seat) {
+        socketRoom.delete(seat.id);
+        const s = io.sockets.sockets.get(seat.id);
+        if (s) s.leave(code);
+      }
+      rooms.delete(code);
+    }
+  }
+}, 10 * 60 * 1000).unref();
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server listening on port ${PORT}`);
+  console.log(`Blockade Board server listening on 0.0.0.0:${PORT}`);
 });
