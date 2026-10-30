@@ -9,6 +9,7 @@ const http = require('http');
 const express = require('express');
 const { Server } = require('socket.io');
 const crypto = require('crypto');
+const path = require('path');
 
 const PORT = Number(process.env.PORT || 3000);
 const ORIGINS = (process.env.CORS_ORIGIN || '*').split(',').map(s => s.trim()).filter(Boolean);
@@ -19,12 +20,12 @@ const CAPACITY = { classic: 2, race: 2, king: 2, '2v2': 4, '3pt': 4, ffa: 4 };
 
 const app = express();
 app.disable('x-powered-by');
-app.get('/', (_req, res) => res.status(200).json({
-  name: 'Blockade Board multiplayer server',
-  status: 'ok',
-  socketio: true,
-  uptime: Math.floor(process.uptime())
-}));
+
+// Serve the game HTML file at the root URL
+app.get('/', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 app.get('/health', (_req, res) => res.status(200).json({ ok: true, rooms: rooms.size }));
 app.get('/api/rooms', (_req, res) => {
   const list = [...rooms.values()]
@@ -131,7 +132,6 @@ function detachSocket(socket, { announce = true } = {}) {
   if (!room.seats.some(Boolean)) {
     rooms.delete(code);
   } else {
-    // Keep a started match alive for remaining players; waiting rooms are reusable.
     broadcastRoom(room);
   }
 }
@@ -275,7 +275,6 @@ io.on('connection', socket => {
     if (!room || !room.started || !data || typeof data !== 'object') return;
     const index = room.seats.findIndex(s => s && s.id === socket.id);
     if (index < 0) return;
-    // Server overwrites player identity to prevent spoofing another seat.
     const payload = { ...data, p: index + 1 };
     room.lastActivity = Date.now();
     for (const seat of room.seats) {
@@ -300,7 +299,6 @@ io.on('connection', socket => {
   socket.on('disconnect', () => detachSocket(socket));
 });
 
-// Expire abandoned rooms, but don't expire an active match that still has players.
 setInterval(() => {
   const cutoff = Date.now() - ROOM_TTL_MS;
   for (const [code, room] of rooms) {
