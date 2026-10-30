@@ -89,6 +89,9 @@ body.mob .board{--pd:8px;--gl:6px}
 body.pc .side{width:320px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:0;padding:12px 14px;transition:.25s}
 .card.on{border-color:var(--cc);box-shadow:0 0 15px color-mix(in srgb,var(--cc) 25%,transparent)}
+.card{position:relative}
+.cbub{position:absolute;right:10px;bottom:calc(100% - 4px);z-index:20;max-width:min(80%,230px);padding:6px 11px;border-radius:12px 12px 3px 12px;background:#f5f5f5;color:#111;border-left:4px solid var(--cc,#888);font:600 12.5px/1.3 system-ui,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 4px 14px rgba(0,0,0,.45);pointer-events:none;opacity:0;transform:translateY(6px) scale(.96);transform-origin:100% 100%;transition:opacity .3s ease,transform .3s ease}
+.cbub.on{opacity:1;transform:none}
 .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .logo{width:36px;height:36px;border-radius:0;background:linear-gradient(135deg,#2563eb,#dc2626);color:#fff;font-weight:900;display:flex;align-items:center;justify-content:center}
 .plist{display:flex;flex-direction:column;gap:8px}
@@ -490,6 +493,39 @@ body.mob.loc .os.cur{border-color:var(--pcol,#dc2626);box-shadow:0 0 14px rgba(v
 #chi{flex:1;min-width:0;padding:11px 12px;border-radius:8px;border:1px solid #2e2e2e;background:#1a1a1a;color:#fff;font-size:16px;font-weight:600;user-select:text;-webkit-user-select:text;outline:none}
 #chi:focus{border-color:#dc2626}
 #cht .chf .btn{padding:0 16px;font-size:18px}
+
+.lay{grid-template-columns:auto 1fr;align-items:center;gap:12px;padding:8px 12px}.lay .seg3{margin:0}.lay .seg3 .btn{padding:9px 6px;font-size:13px}.lay small{white-space:nowrap}
+/* ---------- Landscape layout (phones / tablets): square PC-like board, profile sidebar, compact controls at the bottom ---------- */
+@media(orientation:landscape) and (max-height:520px){.ov{align-items:safe center;overflow-y:auto;padding:8px}}
+body.mob.land{--lsw:230px;--lbs:min(calc(100svh - 48px),calc(100vw - var(--lsw) - 34px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px)));min-height:0;height:100svh;overflow:hidden;align-items:stretch}
+body.mob.land .app{flex-wrap:nowrap;flex-direction:row;align-items:stretch;justify-content:center;gap:8px;height:100svh;width:100%;max-width:none;padding:4px max(6px,env(safe-area-inset-right)) 4px max(6px,env(safe-area-inset-left))}
+body.mob.land .panel{flex:none;width:auto;padding:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;box-shadow:none}
+body.mob.land .top{width:100%;margin:0;flex-wrap:nowrap;font-size:11px;gap:6px;min-height:22px}
+body.mob.land .pill{padding:2px 8px;font-size:11px}
+body.mob.land .bwrap,body.mob.land.loc .bwrap{display:block;width:auto}
+body.mob.land .board,body.mob.land.loc .board{--g:7px;--pd:9px;--gl:5px;grid-area:auto;width:var(--lbs);height:var(--lbs);min-width:0;max-width:none;aspect-ratio:1/1;margin:0}
+body.mob.land .board.n11,body.mob.land.loc .board.n11{--g:4px}
+body.mob.land.loc .os{display:none!important}
+body.mob.land .hint,body.mob.land.loc .hint{display:none!important}
+body.mob.land .side{width:var(--lsw);max-width:none;flex:none;height:100%;gap:5px;overflow-y:auto;overflow-x:hidden;scrollbar-width:none}
+body.mob.land .side::-webkit-scrollbar{display:none}
+body.mob.land .side>.card.row{padding:3px 4px;justify-content:flex-end}
+body.mob.land .side>.card.row>.row:first-child{display:none}
+body.mob.land .side>.card.row .btn{padding:6px 10px;font-size:14px}
+body.mob.land .plist{grid-template-columns:1fr;gap:5px}
+body.mob.land .plist .card{padding:6px 10px}
+body.mob.land .plist .card b[style*="font-size:16px"]{font-size:13px!important}
+body.mob.land .plist .card .tt,body.mob.land .plist .card .clk{font-size:15px}
+body.mob.land .plist .card .mut{font-size:11px}
+body.mob.land #gcard{padding:5px 8px}
+body.mob.land #gcard .btn{padding:6px;margin-top:5px!important}
+body.mob.land .side .ori,body.mob.loc.land .ori{display:grid!important;margin:auto 0 0;width:100%;max-width:none;gap:5px}
+body.mob.land .side .ori .btn{padding:6px;font-size:12px;gap:5px}
+body.mob.land .side .ori .bar{transform:scale(.8)}
+body.mob.land .btns{gap:5px}
+body.mob.land .btns .btn{padding:7px;font-size:12px}
+body.mob.land #chb{width:38px;height:38px;font-size:18px;top:max(4px,env(safe-area-inset-top));bottom:auto;right:calc(max(6px,env(safe-area-inset-right)) + 140px)}
+body.mob.land #cht{top:48px;bottom:8px;height:auto;right:8px;width:min(330px,46vw)}
 </style>
 </head>
 <body>
@@ -523,6 +559,7 @@ body.mob.loc .os.cur{border-color:var(--pcol,#dc2626);box-shadow:0 0 14px rgba(v
       <button class="btn snb" data-do="snd" style="padding:14px">🔊</button>
     </div>
   </header>
+  <div class="blk mobonly lay"><small>LAYOUT</small><div class="seg3"><button class="btn lbtn" data-do="lay:auto">Auto-rotate</button><button class="btn lbtn" data-do="lay:portrait">Portrait</button><button class="btn lbtn" data-do="lay:landscape">Landscape</button></div></div>
   <div class="mc adp"><span class="ic">💎</span><div><b>Free Gems Reward</b><small>Watch a short ad for +10 gems (ads used: <span id="adc">0/20</span><span id="adr"></span>)</small></div><button id="adb" class="btn adb" data-do="ad:lobby">▶ WATCH AD (+10 💎)</button></div>
   <section class="hero">
     <div><span class="bdg"><i></i><span id="bdt">Worldwide Matchmaking Active</span></span><h2>Block Paths. Outsmart Opponents.</h2><p>Race across the grid, capture crowns and erect barricades to block enemy pawns without trapping yourself.</p><button class="tutlink" data-do="tut">New here? Learn in 60 seconds →</button></div>
@@ -822,7 +859,40 @@ function applyFeatures(){
   if(!ONLINE)$('bdt').textContent='Free to play · Strategy Arena';
 }
 const isMob=()=>ctl==='mobile'||(ctl==='auto'&&matchMedia('(hover:none),(pointer:coarse)').matches);
-function applyCtl(){document.body.classList.toggle('mob',isMob());document.body.classList.toggle('pc',!isMob());render();}
+function applyCtl(){document.body.classList.toggle('mob',isMob());document.body.classList.toggle('pc',!isMob());syncLand();render();}
+/* ---------- Orientation: landscape layout, auto-rotate and the pre-match prompt ---------- */
+let oriPref=ST.get('bb_olay')||'auto',oriPend=null;
+const isLand=()=>isMob()&&innerWidth>innerHeight;
+function syncLand(){
+  layUI();
+  const B=document.body.classList,on=isLand(),was=B.contains('land');
+  B.toggle('land',on);
+  const o=document.querySelector('.ori.mobonly'),h=document.querySelector('.hint.mobonly'),
+    side=document.querySelector('main.app>.side'),pan=document.querySelector('main.app>.panel');
+  if(o&&side&&pan){
+    if(on)side.insertBefore(o,side.querySelector('.btns'));        /* compact H/V bar sits at the bottom of the sidebar */
+    else pan.insertBefore(o,h||null);
+  }
+  if(on!==was){window.scrollTo(0,0);try{render();}catch(e){}}
+}
+let landRaf=0;
+const landSoon=()=>{cancelAnimationFrame(landRaf);landRaf=requestAnimationFrame(()=>setTimeout(syncLand,60));};
+addEventListener('resize',landSoon);addEventListener('orientationchange',landSoon);
+try{matchMedia('(orientation:landscape)').addEventListener('change',landSoon);}catch(e){}
+async function lockOri(v){
+  try{
+    if(!screen.orientation||!screen.orientation.lock)return;
+    if(v==='auto'){screen.orientation.unlock();return;}
+    if(!document.fullscreenElement&&document.documentElement.requestFullscreen){try{await document.documentElement.requestFullscreen();}catch(e){}}
+    await screen.orientation.lock(v);
+  }catch(e){}   /* iOS / blocked: the layout simply follows how the phone is held */
+}
+const layUI=()=>document.querySelectorAll('.lbtn').forEach(b=>b.classList.toggle('on',b.dataset.do==='lay:'+oriPref));
+function setLay(v){
+  oriPref=v;ST.set('bb_olay',v);layUI();lockOri(v);
+  setTimeout(()=>{if(v==='landscape'&&!isLand())toast('Rotate your phone sideways for the landscape layout');else if(v==='portrait'&&isLand())toast('Hold your phone upright for the portrait layout');},700);
+}
+
 
 /* ---------- Audio ---------- */
 function tone(f,d,type,v,f2,t0){
@@ -1175,7 +1245,7 @@ function render(){
   const order=PL.filter(p=>p!==me).reverse().concat(me);
   $('plist').innerHTML=order.map(p=>{
     const col=pc[p].c,total=cfg.walls+xw[p],tag=cfg.team?`<span class="tag2">${cu(p)===1?'A':'B'}</span>`:'',done=places[p]?` · ${places[p]===1?'🥇':'🥈'}`:'';
-    return`<div class="card${turn===p&&!over?' on':''}" style="--cc:${col}"><div class="row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><i class="dot" style="background:${col};margin-left:0"></i>${mode==='online'&&pcs[p]?flagS(pcs[p]):''}<b style="font-size:16px">${esc(nameOf(p))}${p===me&&mode==='online'?' (you)':''}</b>${tag}${bt[p]&&mode==='online'?'<span class="tag2">BOT</span>':''}${done}</span><span class="row" style="gap:8px"><b class="tt" data-p="${p}"></b>${cfg.clk?`<b class="clk clock" data-u="${cu(p)}"></b>`:''}<span class="mut">${wl[p]}/${total}</span></span></div><div class="bars">${Array.from({length:total},(_,i)=>`<i class="seg${i<wl[p]?' f':''}"></i>`).join('')}</div></div>`;
+    return`<div class="card${turn===p&&!over?' on':''}" data-p="${p}" style="--cc:${col}">${bubHTML(p)}<div class="row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><i class="dot" style="background:${col};margin-left:0"></i>${mode==='online'&&pcs[p]?flagS(pcs[p]):''}<b style="font-size:16px">${esc(nameOf(p))}${p===me&&mode==='online'?' (you)':''}</b>${tag}${bt[p]&&mode==='online'?'<span class="tag2">BOT</span>':''}${done}</span><span class="row" style="gap:8px"><b class="tt" data-p="${p}"></b>${cfg.clk?`<b class="clk clock" data-u="${cu(p)}"></b>`:''}<span class="mut">${wl[p]}/${total}</span></span></div><div class="bars">${Array.from({length:total},(_,i)=>`<i class="seg${i<wl[p]?' f':''}"></i>`).join('')}</div></div>`;
   }).join('');
   const q=mode==='online'&&isQ&&gmode==='classic';
   $('gt').textContent=mode!=='bot'?`${gm[1]} – ${gm[2]}`:gm[1];$('tg').textContent=total;$('tp').textContent=points;upLobby();
@@ -1217,6 +1287,7 @@ document.addEventListener('click',e=>{
   else if(a==='resign')resign();
   else if(a==='buy')buy();
   else if(a==='bot'){setDiff(v);midAd(()=>start('bot'));}
+  else if(a==='lay')setLay(v);
   else if(a==='ad')watchAd(v);
   else if(a==='ori'){ori=v;render();}
   else if(a==='ctl'){ctl=v;document.querySelectorAll('.cbtn').forEach(x=>x.classList.toggle('on',x.dataset.do==='ctl:'+v));applyCtl();}
@@ -1589,8 +1660,28 @@ function chatNm(p,fb){
   return cleanName(fb)||(p?'Player '+p:'Player');
 }
 const chatClean=t=>String(t==null?'':t).replace(/[\u0000-\u001f<>]/g,' ').replace(/\s+/g,' ').trim().slice(0,CHAT_MAX);
+/* speech bubble next to a player's card (in-match): shows ~3s, then fades; a new message from the same player replaces it and restarts the timer */
+const chatBub={},BUB_MS=3000,BUB_MAX=44;
+const bubShort=t=>t.length>BUB_MAX?t.slice(0,BUB_MAX-1).trimEnd()+'...':t;
+const bubHTML=p=>{const b=chatBub[p];return b&&b.until>Date.now()?`<div class="cbub on">${esc(b.t)}</div>`:'';};
+function bubHide(p){
+  const b=chatBub[p];if(!b||b.until>Date.now())return;
+  const el=document.querySelector(`#plist .card[data-p="${p}"] .cbub`);
+  if(el)el.classList.remove('on');
+  setTimeout(()=>{const x=chatBub[p];if(x&&x.until<=Date.now()){delete chatBub[p];const e=document.querySelector(`#plist .card[data-p="${p}"] .cbub`);if(e)e.remove();}},400);
+}
+function bubShow(p,t){
+  if(mode!=='online'||!p)return;
+  const short=bubShort(t),old=chatBub[p];if(old)clearTimeout(old.to);
+  chatBub[p]={t:short,until:Date.now()+BUB_MS,to:setTimeout(()=>bubHide(p),BUB_MS+30)};
+  const card=document.querySelector(`#plist .card[data-p="${p}"]`);if(!card)return;
+  let el=card.querySelector('.cbub');
+  if(!el){el=document.createElement('div');el.className='cbub';el.textContent=short;card.appendChild(el);void el.offsetWidth;el.classList.add('on');}
+  else{el.classList.remove('on');clearTimeout(el._sw);el._sw=setTimeout(()=>{el.textContent=short;el.classList.add('on');},150);}
+}
 function chatPush(p,fb,t,mine){
   t=chatClean(t);if(!t)return;
+  bubShow(p,t);
   chatMsgs.push({n:chatNm(p,fb),c:chatCol(p),t,me:!!mine});if(chatMsgs.length>80)chatMsgs.shift();
   if(!chatOpen&&!mine){chatUnread++;try{sfx.ui();}catch(e){}}
   chatDraw();
@@ -1607,7 +1698,7 @@ function chatSync(){
   if(!on)chatOpen=false;
   $('cht').classList.toggle('hidden',!chatOpen);
 }
-function chatReset(){chatMsgs=[];chatUnread=0;chatOpen=false;chatLast=0;chatDraw();chatSync();}
+function chatReset(){for(const k in chatBub){clearTimeout(chatBub[k].to);delete chatBub[k];}chatMsgs=[];chatUnread=0;chatOpen=false;chatLast=0;chatDraw();chatSync();}
 function chatSend(){
   const i=$('chi'),t=chatClean(i.value);
   if(!t)return;
